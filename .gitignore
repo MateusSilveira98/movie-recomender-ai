@@ -141,3 +141,12 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Nx
+.nx/
+
+# Local datasets and generated ML artifacts
+data/raw/
+data/processed/
+models/**
+!models/.gitkeep

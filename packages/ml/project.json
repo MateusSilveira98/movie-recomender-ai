@@ -1,0 +1,12 @@
+{
+  "name": "ml",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/ml/src",
+  "tags": ["scope:ml", "type:package"],
+  "targets": {
+    "typecheck": {
+      "command": "tsc -p packages/ml/tsconfig.json --noEmit"
+    }
+  }
+}

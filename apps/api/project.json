@@ -1,0 +1,18 @@
+{
+  "name": "api",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/api/src",
+  "tags": ["scope:api", "type:app"],
+  "targets": {
+    "serve": {
+      "command": "tsx watch apps/api/src/main.ts"
+    },
+    "build": {
+      "command": "tsc -p apps/api/tsconfig.json"
+    },
+    "typecheck": {
+      "command": "tsc -p apps/api/tsconfig.json --noEmit"
+    }
+  }
+}
