@@ -1,0 +1,8 @@
+{
+  "name": "database",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/database/src",
+  "tags": ["scope:database", "type:package"],
+  "targets": {}
+}

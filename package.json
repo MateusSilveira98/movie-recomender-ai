@@ -1,0 +1,17 @@
+{
+  "name": "movie-recomender-ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "nx": "nx",
+    "graph": "nx graph",
+    "projects": "nx show projects",
+    "affected": "nx affected -t lint test build"
+  },
+  "devDependencies": {
+    "@nx/js": "23.0.1",
+    "nx": "23.0.1",
+    "typescript": "6.0.3"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "shared",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/shared/src",
+  "tags": ["scope:shared", "type:package"],
+  "targets": {}
+}

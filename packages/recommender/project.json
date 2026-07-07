@@ -1,0 +1,8 @@
+{
+  "name": "recommender",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/recommender/src",
+  "tags": ["scope:recommender", "type:package"],
+  "targets": {}
+}
