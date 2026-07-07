@@ -4,5 +4,9 @@
   "projectType": "library",
   "sourceRoot": "packages/recommender/src",
   "tags": ["scope:recommender", "type:package"],
-  "targets": {}
+  "targets": {
+    "typecheck": {
+      "command": "tsc -p packages/recommender/tsconfig.json --noEmit"
+    }
+  }
 }

@@ -4,5 +4,15 @@
   "projectType": "application",
   "sourceRoot": "apps/api/src",
   "tags": ["scope:api", "type:app"],
-  "targets": {}
+  "targets": {
+    "serve": {
+      "command": "tsx watch apps/api/src/main.ts"
+    },
+    "build": {
+      "command": "tsc -p apps/api/tsconfig.json"
+    },
+    "typecheck": {
+      "command": "tsc -p apps/api/tsconfig.json --noEmit"
+    }
+  }
 }

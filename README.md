@@ -16,6 +16,16 @@ Este repositorio usa Nx em formato monorepo:
 ```bash
 npm install
 npm run projects
+npm run check
+npm run build
+npm run dev:web
+npm run dev:api
 npm run graph
 npm run affected
 ```
+
+## Hello world local
+
+- Web: `http://127.0.0.1:5173`
+- API healthcheck: `http://127.0.0.1:3333/health`
+- API recomendacoes demo: `http://127.0.0.1:3333/recommendations/demo`

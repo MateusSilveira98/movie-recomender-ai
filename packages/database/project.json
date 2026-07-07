@@ -4,5 +4,9 @@
   "projectType": "library",
   "sourceRoot": "packages/database/src",
   "tags": ["scope:database", "type:package"],
-  "targets": {}
+  "targets": {
+    "typecheck": {
+      "command": "tsc -p packages/database/tsconfig.json --noEmit"
+    }
+  }
 }

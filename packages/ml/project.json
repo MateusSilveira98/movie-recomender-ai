@@ -4,5 +4,9 @@
   "projectType": "library",
   "sourceRoot": "packages/ml/src",
   "tags": ["scope:ml", "type:package"],
-  "targets": {}
+  "targets": {
+    "typecheck": {
+      "command": "tsc -p packages/ml/tsconfig.json --noEmit"
+    }
+  }
 }

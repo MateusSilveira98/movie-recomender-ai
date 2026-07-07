@@ -5,6 +5,8 @@
     "declaration": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
+    "jsx": "react-jsx",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "noEmitOnError": true,
@@ -16,6 +18,12 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
-    "target": "ES2022"
+    "target": "ES2022",
+    "paths": {
+      "@movie-recomender-ai/database": ["packages/database/src/index.ts"],
+      "@movie-recomender-ai/ml": ["packages/ml/src/index.ts"],
+      "@movie-recomender-ai/recommender": ["packages/recommender/src/index.ts"],
+      "@movie-recomender-ai/shared": ["packages/shared/src/index.ts"]
+    }
   }
 }

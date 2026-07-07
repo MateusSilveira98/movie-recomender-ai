@@ -4,5 +4,21 @@
   "projectType": "application",
   "sourceRoot": "apps/web/src",
   "tags": ["scope:web", "type:app"],
-  "targets": {}
+  "targets": {
+    "serve": {
+      "command": "vite --host 0.0.0.0",
+      "options": {
+        "cwd": "apps/web"
+      }
+    },
+    "build": {
+      "command": "vite build",
+      "options": {
+        "cwd": "apps/web"
+      }
+    },
+    "typecheck": {
+      "command": "tsc -p apps/web/tsconfig.json --noEmit"
+    }
+  }
 }
