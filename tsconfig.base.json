@@ -23,7 +23,8 @@
       "@movie-recomender-ai/database": ["packages/database/src/index.ts"],
       "@movie-recomender-ai/ml": ["packages/ml/src/index.ts"],
       "@movie-recomender-ai/recommender": ["packages/recommender/src/index.ts"],
-      "@movie-recomender-ai/shared": ["packages/shared/src/index.ts"]
+      "@movie-recomender-ai/shared": ["packages/shared/src/index.ts"],
+      "@movie-recomender-ai/shared/*": ["packages/shared/src/*"]
     }
   }
 }

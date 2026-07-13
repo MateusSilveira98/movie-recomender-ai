@@ -2,7 +2,8 @@ import express from 'express';
 import { getDatabaseHealth } from '../../../packages/database/src/index.js';
 import { getTrainingPipelineStatus } from '../../../packages/ml/src/index.js';
 import { getDemoRecommendations } from '../../../packages/recommender/src/index.js';
-import { createSessionProfile, getHealthMessage } from '../../../packages/shared/src/index.js';
+import { createSessionProfile } from '../../../packages/shared/src/data-access/factories/session-profile.factory.js';
+import { getHealthMessage } from '../../../packages/shared/src/data-access/services/api-services/health/index.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3333);
