@@ -20,7 +20,6 @@ export function getDemoRecommendations(profile: SessionProfile): Recommendation[
     {
       freeText: '',
       genres: profile.genres,
-      moods: ['intenso'],
       runtime: 'medium',
     },
     {
@@ -35,7 +34,6 @@ function buildRecommendation(movie: Movie, preferences: Preferences, history: Vi
   const genreMatches = movie.genres.filter((genre) => preferences.genres.includes(genre));
   const score =
     genreMatches.length * 2 +
-    getMoodScore(movie, preferences) +
     getRuntimeScore(movie, preferences) +
     getHistoryGenreScore(movie, history.liked) -
     getHistoryGenreScore(movie, history.disliked);
@@ -45,10 +43,6 @@ function buildRecommendation(movie: Movie, preferences: Preferences, history: Vi
     score,
     reason: buildReason(movie, genreMatches, preferences, history),
   };
-}
-
-function getMoodScore(movie: Movie, preferences: Preferences): number {
-  return preferences.moods.includes(movie.mood) ? 2 : 0;
 }
 
 function getRuntimeScore(movie: Movie, preferences: Preferences): number {
@@ -73,10 +67,6 @@ function buildReason(movie: Movie, genreMatches: string[], preferences: Preferen
 
   if (genreMatches.length > 0) {
     reasons.push(`combina com ${genreMatches.join(' e ')}`);
-  }
-
-  if (preferences.moods.includes(movie.mood)) {
-    reasons.push(`tem o clima ${movie.mood}`);
   }
 
   if (preferences.runtime !== 'any' && matchesRuntimePreference(movie.runtime, preferences.runtime)) {

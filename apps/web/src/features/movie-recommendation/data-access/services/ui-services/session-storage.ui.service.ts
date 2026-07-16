@@ -1,6 +1,5 @@
 import type { Preferences } from '@movie-recomender-ai/shared/entities/models/preferences.model';
 import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/viewer-history.model';
-import type { Mood } from '@movie-recomender-ai/shared/entities/types/mood.type';
 import type { RuntimePreference } from '@movie-recomender-ai/shared/entities/types/runtime-preference.type';
 import { DEFAULT_HISTORY, DEFAULT_PREFERENCES } from '../../../entities/consts/defaults.const';
 import { STORAGE_KEY } from '../../../entities/consts/storage.const';
@@ -8,7 +7,8 @@ import type { RecommendationRound, StoredSession } from './movie-session.ui.serv
 
 type LegacyPreferences = Partial<Preferences> & {
   maxRuntime?: number;
-  mood?: Mood;
+  mood?: unknown;
+  moods?: unknown;
 };
 
 type LegacyRecommendationRound = Partial<Omit<RecommendationRound, 'preferences' | 'history'>> & {
@@ -60,6 +60,7 @@ function normalizeRound(round: LegacyRecommendationRound): RecommendationRound |
   return {
     id: round.id ?? `round-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: round.createdAt ?? new Date().toISOString(),
+    sessionId: round.sessionId ?? null,
     preferences: normalizePreferences(round.preferences),
     history: normalizeHistory(round.history),
     recommendations: round.recommendations,
@@ -70,7 +71,6 @@ function normalizePreferences(preferences: LegacyPreferences): Preferences {
   return {
     freeText: preferences.freeText ?? DEFAULT_PREFERENCES.freeText,
     genres: [...(preferences.genres ?? DEFAULT_PREFERENCES.genres)],
-    moods: [...(preferences.moods ?? (preferences.mood ? [preferences.mood] : DEFAULT_PREFERENCES.moods))],
     runtime: preferences.runtime ?? resolveLegacyRuntime(preferences.maxRuntime),
   };
 }

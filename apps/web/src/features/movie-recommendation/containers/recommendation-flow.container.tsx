@@ -22,19 +22,23 @@ export function RecommendationFlowContainer() {
     preferences: (
       <PreferencesStep
         preferences={flow.preferences}
+        genreOptions={flow.genreOptions}
+        genreOptionsStatus={flow.genreOptionsStatus}
         onBack={() => flow.setActiveStep('intro')}
-        onContinue={() => flow.setActiveStep('watched')}
-        onFreeTextChange={flow.updateFreeText}
+        onContinue={flow.advanceToWatchedStep}
         onGenreToggle={flow.updateGenres}
-        onMoodToggle={flow.updateMoods}
+        onRetryGenres={flow.retryGenreOptions}
         onRuntimeChange={flow.updateRuntime}
       />
     ),
     watched: (
       <WatchedStep
         history={flow.history}
+        movies={flow.movies}
+        moviesStatus={flow.moviesStatus}
         onBack={() => flow.setActiveStep('preferences')}
         onContinue={() => flow.setActiveStep('liked')}
+        onRetryMovies={flow.retryMovies}
         onWatchedToggle={flow.updateWatched}
       />
     ),
@@ -50,7 +54,10 @@ export function RecommendationFlowContainer() {
     recommendations: (
       <RecommendationsStep
         recommendations={flow.recommendations}
+        recommendationsStatus={flow.recommendationsStatus}
+        recommendationsError={flow.recommendationsError}
         rounds={flow.recommendationRounds}
+        onFeedback={flow.setRecommendationFeedback}
         onStartNewRound={flow.startNewRound}
       />
     ),

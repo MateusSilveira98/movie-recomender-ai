@@ -5,6 +5,7 @@ import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/
 export interface RecommendationRound {
   id: string;
   createdAt: string;
+  sessionId: string | null;
   preferences: Preferences;
   history: ViewerHistory;
   recommendations: Recommendation[];

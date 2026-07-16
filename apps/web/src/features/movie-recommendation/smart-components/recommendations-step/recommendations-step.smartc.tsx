@@ -1,5 +1,21 @@
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
-import { Box, Button, Card, CardContent, Chip, Stack, Tab, Tabs, Typography } from '@mui/material';
+import ThumbDownIcon from '@mui/icons-material/ThumbDown';
+import ThumbUpIcon from '@mui/icons-material/ThumbUp';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Stack,
+  Tab,
+  Tabs,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
 import { RUNTIME_PREFERENCE_LABELS } from '@movie-recomender-ai/shared/entities/consts/runtime-preference-labels.const';
 import { formatMinutes } from '@movie-recomender-ai/shared/data-access/services/ui-services/movie-format.ui.service';
 import { useState } from 'react';
@@ -15,7 +31,14 @@ const roundDateFormatter = new Intl.DateTimeFormat('pt-BR', {
   year: 'numeric',
 });
 
-export function RecommendationsStep({ recommendations, rounds, onStartNewRound }: RecommendationsStepProps) {
+export function RecommendationsStep({
+  recommendations,
+  recommendationsStatus,
+  recommendationsError,
+  rounds,
+  onFeedback,
+  onStartNewRound,
+}: RecommendationsStepProps) {
   const [activeTab, setActiveTab] = useState<RecommendationResultTab>('recommendations');
 
   return (
@@ -52,13 +75,48 @@ export function RecommendationsStep({ recommendations, rounds, onStartNewRound }
         </CardContent>
       </Card>
 
-      {activeTab === 'recommendations' && <RecommendationsList recommendations={recommendations} />}
+      {recommendationsStatus === 'error' && (
+        <Alert severity="error">{recommendationsError ?? 'Nao foi possivel falar com a API.'}</Alert>
+      )}
+
+      {activeTab === 'recommendations' && (
+        <RecommendationsList
+          recommendations={recommendations}
+          status={recommendationsStatus}
+          onFeedback={onFeedback}
+        />
+      )}
       {activeTab === 'rounds' && <RecommendationRoundsHistory rounds={rounds} />}
     </Stack>
   );
 }
 
-function RecommendationsList({ recommendations }: Pick<RecommendationsStepProps, 'recommendations'>) {
+function RecommendationsList({
+  recommendations,
+  status,
+  onFeedback,
+}: Pick<RecommendationsStepProps, 'recommendations' | 'onFeedback'> & { status: RecommendationsStepProps['recommendationsStatus'] }) {
+  if (status === 'loading') {
+    return (
+      <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+        <CircularProgress size={20} />
+        <Typography color="text.secondary">Buscando recomendacoes na API...</Typography>
+      </Stack>
+    );
+  }
+
+  if (status === 'success' && recommendations.length === 0) {
+    return (
+      <Card variant="outlined">
+        <CardContent>
+          <Typography color="text.secondary">
+            Nenhuma recomendacao encontrada para essas preferencias. Tente ajustar generos ou clima.
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Stack spacing={2}>
       {recommendations.map((movie) => (
@@ -85,6 +143,20 @@ function RecommendationsList({ recommendations }: Pick<RecommendationsStepProps,
                 ))}
                 <Chip label={formatMinutes(movie.runtime)} size="small" variant="outlined" />
               </Stack>
+              <ToggleButtonGroup exclusive size="small" onChange={(_, value: 'liked' | 'disliked' | null) => {
+                if (value) {
+                  onFeedback(movie.id, value);
+                }
+              }}>
+                <ToggleButton value="liked" aria-label={`Gostei de ${movie.title}`}>
+                  <ThumbUpIcon fontSize="small" sx={{ mr: 1 }} />
+                  Gostei
+                </ToggleButton>
+                <ToggleButton value="disliked" aria-label={`Nao gostei de ${movie.title}`}>
+                  <ThumbDownIcon fontSize="small" sx={{ mr: 1 }} />
+                  Nao gostei
+                </ToggleButton>
+              </ToggleButtonGroup>
             </Stack>
           </CardContent>
         </Card>
@@ -120,9 +192,6 @@ function RecommendationRoundsHistory({ rounds }: Pick<RecommendationsStepProps, 
                   <Typography color="text.secondary">{formatRoundDate(round.createdAt)}</Typography>
                 </Box>
                 <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
-                  {round.preferences.moods.map((mood) => (
-                    <Chip key={mood} label={mood} size="small" />
-                  ))}
                   <Chip label={RUNTIME_PREFERENCE_LABELS[round.preferences.runtime]} size="small" />
                 </Stack>
               </Stack>

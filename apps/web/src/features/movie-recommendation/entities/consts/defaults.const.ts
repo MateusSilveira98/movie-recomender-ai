@@ -3,7 +3,6 @@ import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/
 
 export const DEFAULT_PREFERENCES: Preferences = {
   genres: ['Ficcao cientifica', 'Suspense'],
-  moods: ['intenso'],
   runtime: 'medium',
   freeText: '',
 };
