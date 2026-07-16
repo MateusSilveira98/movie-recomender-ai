@@ -1,16 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { Movie } from '@movie-recomender-ai/shared/entities/models/movie.model';
 import type { Preferences } from '@movie-recomender-ai/shared/entities/models/preferences.model';
 import type { Recommendation } from '@movie-recomender-ai/shared/entities/models/recommendation.model';
+import type { Session } from '@movie-recomender-ai/shared/entities/models/session.model';
 import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/viewer-history.model';
-import type { Mood } from '@movie-recomender-ai/shared/entities/types/mood.type';
 import type { RuntimePreference } from '@movie-recomender-ai/shared/entities/types/runtime-preference.type';
 import { DEFAULT_HISTORY, DEFAULT_PREFERENCES } from '../../entities/consts/defaults.const';
 import type { RecommendationStepId } from '../../entities/types/recommendation-step-id.type';
-import { MOVIE_CATALOG_MOCK } from '@movie-recomender-ai/shared/mocks/movie';
+import type { RequestStatus } from '../../entities/types/request-status.type';
+import {
+  createRecommendationSession,
+  fetchGenreOptions,
+  fetchMovieCatalog,
+  fetchSessionRecommendations,
+  sendSessionFeedback,
+} from '../services/api-services/recommendation-api.service';
 import type { RecommendationRound } from '../services/ui-services/movie-session.ui.service';
-import { getRecommendations } from '../services/ui-services/recommendation-engine.ui.service';
 import { saveStoredSession, loadStoredSession } from '../services/ui-services/session-storage.ui.service';
 import { toggleItem } from '../../../../shared/data-access/services/ui-services/selection.ui.service';
+
+const MOVIE_CANDIDATE_LIMIT = 10;
 
 export function useRecommendationFlow() {
   const [activeStep, setActiveStep] = useState<RecommendationStepId>('intro');
@@ -19,48 +28,154 @@ export function useRecommendationFlow() {
   const [recommendationRounds, setRecommendationRounds] = useState<RecommendationRound[]>([]);
   const [hasStoredSession, setHasStoredSession] = useState(false);
 
+  const [genreOptions, setGenreOptions] = useState<string[]>([]);
+  const [genreOptionsStatus, setGenreOptionsStatus] = useState<RequestStatus>('idle');
+
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [moviesStatus, setMoviesStatus] = useState<RequestStatus>('idle');
+
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recommendationsStatus, setRecommendationsStatus] = useState<RequestStatus>('idle');
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadGenreOptions();
+  }, []);
+
   useEffect(() => {
     const storedSession = loadStoredSession();
 
-    if (storedSession) {
-      const storedRounds =
-        storedSession.rounds.length > 0
-          ? storedSession.rounds
-          : [buildRecommendationRound(storedSession.preferences, storedSession.history)];
-
-      setPreferences(storedSession.preferences);
-      setHistory(storedSession.history);
-      setRecommendationRounds(storedRounds);
-      setHasStoredSession(true);
-      setActiveStep('recommendations');
-      saveStoredSession({ ...storedSession, rounds: storedRounds });
+    if (!storedSession) {
+      return;
     }
+
+    const activeRound = storedSession.rounds[0] ?? null;
+
+    setPreferences(storedSession.preferences);
+    setHistory(storedSession.history);
+    setRecommendationRounds(storedSession.rounds);
+    setSessionId(activeRound?.sessionId ?? null);
+    setRecommendations(activeRound?.recommendations ?? []);
+    setRecommendationsStatus(activeRound ? 'success' : 'idle');
+    setHasStoredSession(true);
+    setActiveStep('recommendations');
   }, []);
 
   const watchedMovies = useMemo(
-    () => MOVIE_CATALOG_MOCK.filter((movie) => history.watched.includes(movie.id)),
-    [history.watched],
+    () => movies.filter((movie) => history.watched.includes(movie.id)),
+    [history.watched, movies],
   );
-  const recommendations = useMemo(() => getRecommendations(preferences, history), [history, preferences]);
+
+  function loadGenreOptions() {
+    setGenreOptionsStatus('loading');
+
+    fetchGenreOptions()
+      .then((genres) => {
+        setGenreOptions(genres);
+        setGenreOptionsStatus('success');
+      })
+      .catch(() => {
+        setGenreOptionsStatus('error');
+      });
+  }
+
+  function loadMovies(filter: { genres: string[]; runtime: RuntimePreference; limit: number }) {
+    setMoviesStatus('loading');
+
+    fetchMovieCatalog(filter)
+      .then((catalog) => {
+        setMovies(catalog);
+        setMoviesStatus('success');
+      })
+      .catch(() => {
+        setMoviesStatus('error');
+      });
+  }
+
+  function advanceToWatchedStep() {
+    loadMovies({ genres: preferences.genres, runtime: preferences.runtime, limit: MOVIE_CANDIDATE_LIMIT });
+    setActiveStep('watched');
+  }
+
+  function retryMovies() {
+    loadMovies({ genres: preferences.genres, runtime: preferences.runtime, limit: MOVIE_CANDIDATE_LIMIT });
+  }
 
   function startNewRound() {
     setPreferences(DEFAULT_PREFERENCES);
     setHistory(DEFAULT_HISTORY);
+    setSessionId(null);
+    setRecommendations([]);
+    setRecommendationsStatus('idle');
+    setRecommendationsError(null);
     setActiveStep('preferences');
   }
 
-  function completeRound() {
-    const nextRound = buildRecommendationRound(preferences, history);
-    const nextRounds = [nextRound, ...recommendationRounds];
+  async function completeRound() {
+    setRecommendationsStatus('loading');
+    setRecommendationsError(null);
 
-    setRecommendationRounds(nextRounds);
-    saveStoredSession({
-      preferences: nextRound.preferences,
-      history: nextRound.history,
-      rounds: nextRounds,
+    try {
+      const session = await createRecommendationSession({ preferences, history });
+      const fetchedRecommendations = await fetchSessionRecommendations(session.id);
+      const nextRound = buildRecommendationRound(session, fetchedRecommendations);
+      const nextRounds = [nextRound, ...recommendationRounds];
+
+      setSessionId(session.id);
+      setRecommendations(fetchedRecommendations);
+      setRecommendationRounds(nextRounds);
+      setRecommendationsStatus('success');
+      setHasStoredSession(true);
+      setActiveStep('recommendations');
+      saveStoredSession({ preferences: nextRound.preferences, history: nextRound.history, rounds: nextRounds });
+    } catch (error) {
+      setRecommendationsStatus('error');
+      setRecommendationsError(resolveErrorMessage(error));
+    }
+  }
+
+  async function setRecommendationFeedback(movieId: string, opinion: 'liked' | 'disliked') {
+    if (!sessionId) {
+      return;
+    }
+
+    setRecommendationsStatus('loading');
+    setRecommendationsError(null);
+
+    try {
+      const session = await sendSessionFeedback(sessionId, { movieId, feedback: opinion });
+      const fetchedRecommendations = await fetchSessionRecommendations(sessionId);
+
+      setHistory(session.history);
+      setRecommendations(fetchedRecommendations);
+      setRecommendationsStatus('success');
+      updateActiveRound(session, fetchedRecommendations);
+    } catch (error) {
+      setRecommendationsStatus('error');
+      setRecommendationsError(resolveErrorMessage(error));
+    }
+  }
+
+  function updateActiveRound(session: Session, fetchedRecommendations: Recommendation[]) {
+    setRecommendationRounds((currentRounds) => {
+      const [activeRound, ...otherRounds] = currentRounds;
+
+      if (!activeRound) {
+        return currentRounds;
+      }
+
+      const updatedRound: RecommendationRound = {
+        ...activeRound,
+        history: cloneHistory(session.history),
+        recommendations: fetchedRecommendations,
+      };
+      const nextRounds = [updatedRound, ...otherRounds];
+
+      saveStoredSession({ preferences: updatedRound.preferences, history: updatedRound.history, rounds: nextRounds });
+
+      return nextRounds;
     });
-    setHasStoredSession(true);
-    setActiveStep('recommendations');
   }
 
   function updateGenres(genre: string) {
@@ -70,19 +185,8 @@ export function useRecommendationFlow() {
     }));
   }
 
-  function updateMoods(mood: Mood) {
-    setPreferences((current) => ({
-      ...current,
-      moods: toggleItem(current.moods, mood),
-    }));
-  }
-
   function updateRuntime(runtime: RuntimePreference) {
     setPreferences((current) => ({ ...current, runtime }));
-  }
-
-  function updateFreeText(freeText: string) {
-    setPreferences((current) => ({ ...current, freeText }));
   }
 
   function updateWatched(movieId: string) {
@@ -111,15 +215,23 @@ export function useRecommendationFlow() {
     preferences,
     history,
     hasStoredSession,
+    genreOptions,
+    genreOptionsStatus,
+    movies,
+    moviesStatus,
     watchedMovies,
     recommendations,
+    recommendationsStatus,
+    recommendationsError,
     recommendationRounds,
     startNewRound,
+    advanceToWatchedStep,
     completeRound,
+    setRecommendationFeedback,
+    retryGenreOptions: loadGenreOptions,
+    retryMovies,
     updateGenres,
-    updateMoods,
     updateRuntime,
-    updateFreeText,
     updateWatched,
     setMovieOpinion,
   };
@@ -133,14 +245,13 @@ function updateOpinionList(movieIds: string[], movieId: string, shouldInclude: b
   return Array.from(new Set([...movieIds, movieId]));
 }
 
-function buildRecommendationRound(preferences: Preferences, history: ViewerHistory): RecommendationRound {
-  const recommendations = getRecommendations(preferences, history);
-
+function buildRecommendationRound(session: Session, recommendations: Recommendation[]): RecommendationRound {
   return {
     id: `round-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    createdAt: new Date().toISOString(),
-    preferences: clonePreferences(preferences),
-    history: cloneHistory(history),
+    createdAt: session.createdAt,
+    sessionId: session.id,
+    preferences: clonePreferences(session.preferences),
+    history: cloneHistory(session.history),
     recommendations: recommendations.map(cloneRecommendation),
   };
 }
@@ -149,7 +260,6 @@ function clonePreferences(preferences: Preferences): Preferences {
   return {
     ...preferences,
     genres: [...preferences.genres],
-    moods: [...preferences.moods],
   };
 }
 
@@ -166,4 +276,8 @@ function cloneRecommendation(recommendation: Recommendation): Recommendation {
     ...recommendation,
     genres: [...recommendation.genres],
   };
+}
+
+function resolveErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Nao foi possivel completar a operacao.';
 }
