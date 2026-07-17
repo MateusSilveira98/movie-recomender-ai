@@ -1,0 +1,57 @@
+services:
+  db:
+    image: ghcr.io/tursodatabase/libsql-server@sha256:528e068844b4bc5b87fb128da87e98d361d3414c4e1cced7b943939248e0ed2f
+    platform: linux/amd64
+    environment:
+      SQLD_DB_PATH: /var/lib/sqld/movie-recomender-ai.db
+      SQLD_HTTP_LISTEN_ADDR: 0.0.0.0:8080
+      SQLD_GRPC_LISTEN_ADDR: 0.0.0.0:8081
+    ports:
+      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:18081:8081"
+    volumes:
+      - db-data:/var/lib/sqld
+
+  migrate:
+    image: node:22.16.0-alpine
+    profiles:
+      - maintenance
+    working_dir: /workspace
+    command: sh -lc "npm ci && npm exec -- tsx packages/database/src/apply-schema.ts"
+    environment:
+      DATABASE_URL: http://db:8080
+    volumes:
+      - .:/workspace
+    depends_on:
+      - db
+
+  train:
+    image: node:22.16.0-alpine
+    profiles:
+      - maintenance
+    working_dir: /workspace
+    command: sh -lc "npm ci && npm exec -- tsx packages/ml/src/train.ts"
+    environment:
+      DATABASE_URL: http://db:8080
+    volumes:
+      - .:/workspace
+    depends_on:
+      - db
+
+  api:
+    image: node:22.16.0-alpine
+    working_dir: /workspace
+    command: sh -lc "npm ci && npm run dev:api"
+    environment:
+      PORT: 3333
+      DATABASE_URL: http://db:8080
+      WEB_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "127.0.0.1:3333:3333"
+    volumes:
+      - .:/workspace
+    depends_on:
+      - db
+
+volumes:
+  db-data:
