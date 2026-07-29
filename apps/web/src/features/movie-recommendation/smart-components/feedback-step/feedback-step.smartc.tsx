@@ -1,7 +1,7 @@
 import ThumbDownIcon from '@mui/icons-material/ThumbDown';
 import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import { Box, Button, Card, CardContent, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
-import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/viewer-history.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
 import type { FeedbackStepProps } from './feedback-step.interface';
 
 export function FeedbackStep({ history, watchedMovies, onBack, onContinue, onOpinionChange }: FeedbackStepProps) {

@@ -1,4 +1,4 @@
-import type { Preferences } from '@movie-recomender-ai/shared/entities/models/preferences.model';
+import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
 import type { RequestStatus } from '../../entities/types/request-status.type';
 
 export interface PreferencesStepProps {

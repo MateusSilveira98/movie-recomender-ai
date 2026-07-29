@@ -1,0 +1,15 @@
+{
+  "name": "logger",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/logger/src",
+  "tags": ["scope:logger", "type:package"],
+  "targets": {
+    "test": {
+      "command": "tsx --test packages/logger/src/index.spec.ts"
+    },
+    "typecheck": {
+      "command": "tsc -p packages/logger/tsconfig.json --noEmit"
+    }
+  }
+}

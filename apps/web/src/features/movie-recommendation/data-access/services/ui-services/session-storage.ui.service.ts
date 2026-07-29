@@ -1,6 +1,6 @@
-import type { Preferences } from '@movie-recomender-ai/shared/entities/models/preferences.model';
-import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/viewer-history.model';
-import type { RuntimePreference } from '@movie-recomender-ai/shared/entities/types/runtime-preference.type';
+import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
+import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
 import { DEFAULT_HISTORY, DEFAULT_PREFERENCES } from '../../../entities/consts/defaults.const';
 import { STORAGE_KEY } from '../../../entities/consts/storage.const';
 import type { RecommendationRound, StoredSession } from './movie-session.ui.service';

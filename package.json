@@ -9,17 +9,21 @@
     "projects": "nx show projects",
     "affected": "nx affected -t lint test build",
     "dev:web": "nx serve web",
-    "dev:api": "nx serve api",
+    "dev:bff": "nx serve bff",
     "build": "nx run-many -t build",
     "check": "nx run-many -t typecheck"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
+    "@libsql/client": "0.17.4",
     "@mui/icons-material": "9.1.1",
     "@mui/material": "9.1.2",
+    "@types/multer": "2.2.0",
     "cors": "2.8.6",
     "express": "4.22.2",
+    "json5": "2.2.3",
+    "multer": "2.2.0",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },

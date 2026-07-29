@@ -1,4 +1,4 @@
-import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/viewer-history.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
 
 export interface HistoryPanelProps {
   history: ViewerHistory;

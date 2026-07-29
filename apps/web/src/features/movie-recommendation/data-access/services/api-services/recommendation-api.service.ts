@@ -1,9 +1,9 @@
-import type { CreateSessionRequest } from '@movie-recomender-ai/shared/entities/models/create-session-request.model';
-import type { Movie } from '@movie-recomender-ai/shared/entities/models/movie.model';
-import type { Recommendation } from '@movie-recomender-ai/shared/entities/models/recommendation.model';
-import type { Session } from '@movie-recomender-ai/shared/entities/models/session.model';
-import type { SessionFeedbackRequest } from '@movie-recomender-ai/shared/entities/models/session-feedback-request.model';
-import type { RuntimePreference } from '@movie-recomender-ai/shared/entities/types/runtime-preference.type';
+import type { CreateSessionRequest } from '@pkg/shared/entities/models/create-session-request.model';
+import type { Movie } from '@pkg/shared/entities/models/movie.model';
+import type { Recommendation } from '@pkg/shared/entities/models/recommendation.model';
+import type { Session } from '@pkg/shared/entities/models/session.model';
+import type { SessionFeedbackRequest } from '@pkg/shared/entities/models/session-feedback-request.model';
+import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
 import { API_BASE_URL } from '../../../entities/consts/api-base-url.const';
 
 export interface MovieCatalogFilter {

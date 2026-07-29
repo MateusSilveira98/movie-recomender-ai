@@ -59,7 +59,7 @@ Rules:
 
 - Each model, type, or const must have its own file when it represents an independent concept.
 - Do not create local files only to re-export types or constants from `shared`.
-- If the contract already exists in `@movie-recomender-ai/shared`, import directly from it.
+- If the contract already exists in `@pkgs/shared`, import directly from it.
 - Local persistence contracts or serialized UI state are not domain entities. Example: `StoredSession` and `RecommendationRound` belong in `data-access/services/ui-services/movie-session.ui.service.ts`.
 
 ## `data-access`
@@ -81,13 +81,13 @@ Rules:
 
 ## `shared` in the frontend
 
-The frontend can consume global contracts from `@movie-recomender-ai/shared`, but must not hide them behind local wrappers.
+The frontend can consume global contracts from `@pkgs/shared`, but must not hide them behind local wrappers.
 
 Use direct imports, for example:
 
-- `@movie-recomender-ai/shared/entities/models/movie.model`
-- `@movie-recomender-ai/shared/entities/types/runtime-preference.type`
-- `@movie-recomender-ai/shared/entities/consts/genre-options.const`
-- `@movie-recomender-ai/shared/mocks/movie`
+- `@pkgs/shared/entities/models/movie.model`
+- `@pkgs/shared/entities/types/runtime-preference.type`
+- `@pkgs/shared/entities/consts/genre-options.const`
+- `@pkgs/shared/mocks/movie`
 
 If a type belongs to the global domain, it belongs in `shared`. If it belongs only to a feature/screen, it stays inside that feature.

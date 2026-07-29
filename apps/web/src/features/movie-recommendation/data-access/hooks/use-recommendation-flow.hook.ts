@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Movie } from '@movie-recomender-ai/shared/entities/models/movie.model';
-import type { Preferences } from '@movie-recomender-ai/shared/entities/models/preferences.model';
-import type { Recommendation } from '@movie-recomender-ai/shared/entities/models/recommendation.model';
-import type { Session } from '@movie-recomender-ai/shared/entities/models/session.model';
-import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/viewer-history.model';
-import type { RuntimePreference } from '@movie-recomender-ai/shared/entities/types/runtime-preference.type';
+import type { Movie } from '@pkg/shared/entities/models/movie.model';
+import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
+import type { Recommendation } from '@pkg/shared/entities/models/recommendation.model';
+import type { Session } from '@pkg/shared/entities/models/session.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
+import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
 import { DEFAULT_HISTORY, DEFAULT_PREFERENCES } from '../../entities/consts/defaults.const';
 import type { RecommendationStepId } from '../../entities/types/recommendation-step-id.type';
 import type { RequestStatus } from '../../entities/types/request-status.type';
