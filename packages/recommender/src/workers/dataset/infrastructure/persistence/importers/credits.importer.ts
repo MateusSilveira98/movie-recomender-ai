@@ -11,15 +11,29 @@ export async function importCredits(
   filePath: string,
   knownMovieIds: Set<string>,
   featureDrafts: Map<string, MovieFeatureDraft>,
-): Promise<void> {
+): Promise<CreditsImportResult> {
   const statements: SqlStatement[] = [];
+  let importedRows = 0;
+  let missingMovieRows = 0;
+  let processedRows = 0;
+  let rejectedRows = 0;
 
   for await (const row of readCsv(filePath)) {
+    processedRows += 1;
     const movieId = parseMovieId(row.id);
 
-    if (!movieId || !knownMovieIds.has(movieId)) {
+    if (!movieId) {
+      rejectedRows += 1;
       continue;
     }
+
+    if (!knownMovieIds.has(movieId)) {
+      missingMovieRows += 1;
+      continue;
+    }
+
+    const featureDraft = featureDrafts.get(movieId) ?? createFeatureDraft(movieId);
+    featureDrafts.set(movieId, featureDraft);
 
     parseLooseArray(row.cast).forEach((member, index) => {
       const castRecord = toCastRecord(member, movieId, index);
@@ -29,7 +43,8 @@ export async function importCredits(
       }
 
       statements.push(createCastStatement(castRecord));
-      appendUnique(featureDrafts.get(movieId)?.cast, castRecord.personName);
+      appendUnique(featureDraft.cast, castRecord.personName);
+      importedRows += 1;
     });
 
     parseLooseArray(row.crew).forEach((member) => {
@@ -40,9 +55,10 @@ export async function importCredits(
       }
 
       statements.push(createCrewStatement(crewRecord));
+      importedRows += 1;
 
       if (INDEXED_CREW_JOBS.has(crewRecord.job)) {
-        appendUnique(featureDrafts.get(movieId)?.crew, `${crewRecord.job}: ${crewRecord.personName}`);
+        appendUnique(featureDraft.crew, `${crewRecord.job}: ${crewRecord.personName}`);
       }
     });
 
@@ -52,6 +68,31 @@ export async function importCredits(
   }
 
   await flushStatements(client, statements);
+  return { importedRows, missingMovieRows, processedRows, rejectedRows };
+}
+
+export async function updateMovieFeaturePeople(client: Client, featureDrafts: Map<string, MovieFeatureDraft>): Promise<void> {
+  const statements: SqlStatement[] = [];
+
+  for (const draft of featureDrafts.values()) {
+    statements.push([
+      `UPDATE movie_features SET cast_json = ?, crew_json = ?, updated_at = CURRENT_TIMESTAMP WHERE movie_id = ?`,
+      [JSON.stringify(draft.cast), JSON.stringify(draft.crew), draft.movieId],
+    ]);
+
+    if (statements.length >= 200) {
+      await flushStatements(client, statements);
+    }
+  }
+
+  await flushStatements(client, statements);
+}
+
+export interface CreditsImportResult {
+  importedRows: number;
+  missingMovieRows: number;
+  processedRows: number;
+  rejectedRows: number;
 }
 
 function createCastStatement(record: NonNullable<ReturnType<typeof toCastRecord>>): SqlStatement {
@@ -80,4 +121,8 @@ function appendUnique(values: string[] | undefined, value: string): void {
   }
 
   values.push(value);
+}
+
+function createFeatureDraft(movieId: string): MovieFeatureDraft {
+  return { cast: [], crew: [], genres: [], movieId, summaryText: '' };
 }

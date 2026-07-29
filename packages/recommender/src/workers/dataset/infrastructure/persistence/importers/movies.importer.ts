@@ -11,11 +11,15 @@ export async function importMovies(client: Client, filePath: string, links: Data
   const movieIdsByMovieLensId = new Map<number, string>();
   const statements: SqlStatement[] = [];
   let importedCount = 0;
+  let processedCount = 0;
+  let rejectedCount = 0;
 
   for await (const row of readCsv(filePath)) {
+    processedCount += 1;
     const movie = toMovieRecord(row, links);
 
     if (!movie) {
+      rejectedCount += 1;
       continue;
     }
 
@@ -39,7 +43,7 @@ export async function importMovies(client: Client, filePath: string, links: Data
   }
 
   await flushStatements(client, statements);
-  return { featureDrafts, importedCount, knownMovieIds };
+  return { featureDrafts, importedCount, knownMovieIds, processedCount, rejectedCount };
 }
 
 function createMovieStatement(movie: NonNullable<ReturnType<typeof toMovieRecord>>): SqlStatement {

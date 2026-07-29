@@ -8,15 +8,20 @@ export async function importRatingStats(
   filePath: string,
   linksByMovieLensId: Map<number, LinkRecord>,
   knownMovieIds: Set<string>,
-): Promise<number> {
+): Promise<RatingsImportResult> {
   const statsByMovieId = new Map<string, MovieRatingStats>();
+  let processedRows = 0;
+  let rejectedRows = 0;
+  let missingDependencyRows = 0;
 
   for await (const row of readCsv(filePath)) {
+    processedRows += 1;
     const movieLensId = parsePositiveInteger(row.movieId);
     const ratingValue = Number(row.rating);
     const timestamp = Number(row.timestamp);
 
     if (movieLensId === null || !Number.isFinite(ratingValue) || !Number.isFinite(timestamp)) {
+      rejectedRows += 1;
       continue;
     }
 
@@ -24,6 +29,7 @@ export async function importRatingStats(
     const movieId = link ? String(link.movieId) : null;
 
     if (!movieId || !knownMovieIds.has(movieId)) {
+      missingDependencyRows += 1;
       continue;
     }
 
@@ -43,7 +49,14 @@ export async function importRatingStats(
   }
 
   await flushStatements(client, statements);
-  return statsByMovieId.size;
+  return { importedRows: statsByMovieId.size, missingDependencyRows, processedRows, rejectedRows };
+}
+
+export interface RatingsImportResult {
+  importedRows: number;
+  missingDependencyRows: number;
+  processedRows: number;
+  rejectedRows: number;
 }
 
 function createRatingStats(movieId: string, movieLensId: number, ratingValue: number): MovieRatingStats {

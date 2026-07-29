@@ -34,6 +34,8 @@ export interface MovieImportResult {
   featureDrafts: Map<string, MovieFeatureDraft>;
   importedCount: number;
   knownMovieIds: Set<string>;
+  processedCount: number;
+  rejectedCount: number;
 }
 
 export interface MovieRatingStats {

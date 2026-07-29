@@ -7,6 +7,9 @@ import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.m
 import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
 import { MOVIE_CATALOG_MOCK } from '@pkg/shared/mocks/movie';
 
+export { createDatasetImportQueue, type DatasetImportQueue } from './workers/dataset/application/dataset-import-queue.service.js';
+export { DATASET_FILE_TYPES, type DatasetFileType, type DatasetImportJob, type DatasetUpload } from './workers/dataset/domain/dataset-import-queue.types.js';
+
 export function getRecommendations(preferences: Preferences, history: ViewerHistory): Recommendation[] {
   return MOVIE_CATALOG_MOCK
     .filter((movie) => !history.watched.includes(movie.id))

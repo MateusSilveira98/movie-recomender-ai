@@ -9,7 +9,7 @@
       "command": "tsx --tsconfig tsconfig.base.json packages/recommender/src/dataset-import.worker.ts"
     },
     "test": {
-      "command": "tsx --test packages/recommender/src/workers/dataset/infrastructure/data/csv.reader.spec.ts"
+      "command": "tsx --tsconfig tsconfig.base.json --test packages/recommender/src/workers/dataset/application/dataset-import-queue.service.spec.ts packages/recommender/src/workers/dataset/infrastructure/data/csv.reader.spec.ts packages/recommender/src/workers/dataset/domain/dataset-import-dependencies.service.spec.ts packages/recommender/src/workers/dataset/domain/dataset-upload-status.service.spec.ts"
     },
     "typecheck": {
       "command": "tsc -p packages/recommender/tsconfig.json --noEmit"

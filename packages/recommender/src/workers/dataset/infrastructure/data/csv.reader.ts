@@ -30,6 +30,21 @@ export function readCsv(filePath: string): AsyncGenerator<Record<string, string>
   })();
 }
 
+export async function readCsvHeaders(filePath: string): Promise<string[]> {
+  const input = createReadStream(filePath, { encoding: 'utf8' });
+  const reader = createInterface({ input, crlfDelay: Infinity });
+
+  for await (const line of reader) {
+    if (line.trim().length > 0) {
+      reader.close();
+      input.destroy();
+      return parseCsvLine(line);
+    }
+  }
+
+  return [];
+}
+
 export function parseCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = '';
