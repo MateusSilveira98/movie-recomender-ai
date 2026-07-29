@@ -107,6 +107,45 @@ CREATE TABLE IF NOT EXISTS dataset_import_runs (
   error_message TEXT
 );
 
+CREATE TABLE IF NOT EXISTS dataset_movie_links (
+  movie_lens_id INTEGER PRIMARY KEY,
+  tmdb_id TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS dataset_uploads (
+  id TEXT PRIMARY KEY,
+  file_name TEXT NOT NULL,
+  file_type TEXT NOT NULL CHECK (file_type IN ('movies', 'links', 'credits', 'ratings')),
+  storage_path TEXT,
+  size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+  status TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'waiting_dependencies', 'success', 'partial_error', 'error')),
+  processed_rows INTEGER NOT NULL DEFAULT 0 CHECK (processed_rows >= 0),
+  imported_rows INTEGER NOT NULL DEFAULT 0 CHECK (imported_rows >= 0),
+  rejected_rows INTEGER NOT NULL DEFAULT 0 CHECK (rejected_rows >= 0),
+  waiting_dependency_rows INTEGER NOT NULL DEFAULT 0 CHECK (waiting_dependency_rows >= 0),
+  failures_json TEXT NOT NULL DEFAULT '[]',
+  dependencies_json TEXT NOT NULL DEFAULT '[]',
+  error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_jobs (
+  id TEXT PRIMARY KEY,
+  upload_id TEXT NOT NULL UNIQUE,
+  file_type TEXT NOT NULL CHECK (file_type IN ('movies', 'links', 'credits', 'ratings')),
+  status TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'waiting_dependencies', 'completed', 'failed')),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  completed_at TEXT,
+  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -163,6 +202,9 @@ CREATE INDEX IF NOT EXISTS idx_movie_crew_person_name ON movie_crew (person_name
 CREATE INDEX IF NOT EXISTS idx_movie_ratings_stats_rating_average ON movie_ratings_stats (rating_average);
 CREATE INDEX IF NOT EXISTS idx_dataset_import_runs_lookup ON dataset_import_runs (dataset_key, environment, started_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_import_runs_running ON dataset_import_runs (dataset_key, environment) WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS idx_dataset_uploads_status_created_at ON dataset_uploads (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_jobs_status_created_at ON dataset_import_jobs (status, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_import_jobs_single_processing ON dataset_import_jobs (status) WHERE status = 'processing';
 CREATE INDEX IF NOT EXISTS idx_sessions_status_created_at ON sessions (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_session_preferences_session_id ON session_preferences (session_id);
 CREATE INDEX IF NOT EXISTS idx_session_movie_feedback_session_id ON session_movie_feedback (session_id);
