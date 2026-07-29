@@ -6,7 +6,7 @@
   "tags": ["scope:bff", "type:app"],
   "targets": {
     "serve": {
-      "command": "tsx --tsconfig tsconfig.base.json watch apps/bff/src/main.ts"
+      "command": "tsx watch --tsconfig tsconfig.base.json apps/bff/src/main.ts"
     },
     "build": {
       "command": "tsc -p apps/bff/tsconfig.json"

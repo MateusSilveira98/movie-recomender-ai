@@ -2,7 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
 import { getTrainingPipelineStatus } from '@pkg/ml';
-import { getDemoRecommendations } from '@pkg/recommender';
+import { createDatasetImportQueue, getDemoRecommendations } from '@pkg/recommender';
 import { createSessionProfile } from '@pkg/shared/data-access/factories/session-profile.factory';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
 import { createSqlSessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
@@ -14,6 +14,7 @@ const LOCAL_WEB_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/;
 export function createApp(): express.Express {
   const app = express();
   const databaseClient = createDatabaseClient();
+  const datasetImportQueue = createDatasetImportQueue(databaseClient);
   const sessionRepository = createSqlSessionRepository(databaseClient);
 
   app.use(
@@ -53,8 +54,10 @@ export function createApp(): express.Express {
     });
   });
 
-  app.use(createAppRouter({ sessionRepository }));
+  app.use(createAppRouter({ datasetImportQueue, sessionRepository }));
   app.use(requestErrorHandler);
+
+  void datasetImportQueue.processPending();
 
   return app;
 }
