@@ -1,5 +1,5 @@
-import { RUNTIME_PREFERENCE_OPTIONS } from '../../../../../../packages/shared/src/entities/consts/runtime-preference-options.const.js';
-import type { RuntimePreference } from '../../../../../../packages/shared/src/entities/types/runtime-preference.type.js';
+import { RUNTIME_PREFERENCE_OPTIONS } from '@pkg/shared/entities/consts/runtime-preference-options.const';
+import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
 import type { ValidationResult } from '../../../app/types/validation-result.type.js';
 import type { MovieFilter } from '../entities/movie-filter.entity.js';
 

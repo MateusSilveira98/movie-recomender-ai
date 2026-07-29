@@ -1,8 +1,8 @@
-import { getRecommendations } from '../../../../../../packages/recommender/src/index.js';
-import type { CreateSessionRequest } from '../../../../../../packages/shared/src/entities/models/create-session-request.model.js';
-import type { Recommendation } from '../../../../../../packages/shared/src/entities/models/recommendation.model.js';
-import type { Session } from '../../../../../../packages/shared/src/entities/models/session.model.js';
-import type { SessionFeedbackRequest } from '../../../../../../packages/shared/src/entities/models/session-feedback-request.model.js';
+import { getRecommendations } from '@pkg/recommender';
+import type { CreateSessionRequest } from '@pkg/shared/entities/models/create-session-request.model';
+import type { Recommendation } from '@pkg/shared/entities/models/recommendation.model';
+import type { Session } from '@pkg/shared/entities/models/session.model';
+import type { SessionFeedbackRequest } from '@pkg/shared/entities/models/session-feedback-request.model';
 import type { SessionRepository } from '../repositories/sessions.repository.js';
 import { applyFeedbackToHistory } from './session-feedback.service.js';
 import { generateSessionId } from './session-id.service.js';

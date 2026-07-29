@@ -1,9 +1,10 @@
 import type { RequestHandler } from 'express';
+import { createAsyncHandler } from '../../../middlewares/request-logger.middleware.js';
 import type { SessionsService } from '../services/sessions.service.js';
 import { validateCreateSessionRequest, validateSessionFeedbackRequest } from '../validators/sessions.validator.js';
 
 export function createCreateSessionController(sessionsService: SessionsService): RequestHandler {
-  return async (request, response) => {
+  return createAsyncHandler(async (request, response) => {
     const validation = validateCreateSessionRequest(request.body);
 
     if (!validation.valid) {
@@ -12,11 +13,11 @@ export function createCreateSessionController(sessionsService: SessionsService):
     }
 
     response.status(201).json({ session: await sessionsService.create(validation.data) });
-  };
+  });
 }
 
 export function createSessionRecommendationsController(sessionsService: SessionsService): RequestHandler {
-  return async (request, response) => {
+  return createAsyncHandler(async (request, response) => {
     const result = await sessionsService.findRecommendations(request.params.sessionId);
 
     if (!result) {
@@ -25,11 +26,11 @@ export function createSessionRecommendationsController(sessionsService: Sessions
     }
 
     response.json(result);
-  };
+  });
 }
 
 export function createSessionFeedbackController(sessionsService: SessionsService): RequestHandler {
-  return async (request, response) => {
+  return createAsyncHandler(async (request, response) => {
     const validation = validateSessionFeedbackRequest(request.body);
 
     if (!validation.valid) {
@@ -45,5 +46,5 @@ export function createSessionFeedbackController(sessionsService: SessionsService
     }
 
     response.json({ session });
-  };
+  });
 }

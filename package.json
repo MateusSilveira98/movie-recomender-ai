@@ -9,7 +9,7 @@
     "projects": "nx show projects",
     "affected": "nx affected -t lint test build",
     "dev:web": "nx serve web",
-    "dev:api": "nx serve api",
+    "dev:bff": "nx serve bff",
     "build": "nx run-many -t build",
     "check": "nx run-many -t typecheck"
   },

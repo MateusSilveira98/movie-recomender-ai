@@ -1,5 +1,5 @@
-import type { ViewerHistory } from '../../../../../../packages/shared/src/entities/models/viewer-history.model.js';
-import type { SessionFeedback } from '../../../../../../packages/shared/src/entities/types/session-feedback.type.js';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
+import type { SessionFeedback } from '@pkg/shared/entities/types/session-feedback.type';
 
 export function applyFeedbackToHistory(
   history: ViewerHistory,

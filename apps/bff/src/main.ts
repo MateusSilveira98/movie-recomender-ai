@@ -1,8 +1,9 @@
 import { createApp } from './app/app.js';
+import { logger } from '@pkg/logger';
 
 const app = createApp();
 const port = Number(process.env.PORT ?? 3333);
 
 app.listen(port, () => {
-  console.log(`Movie Recommender API running at http://localhost:${port}`);
+  logger.info({ component: 'bff', event: 'started', port });
 });

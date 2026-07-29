@@ -1,5 +1,5 @@
-import type { Movie } from '../../../../../../packages/shared/src/entities/models/movie.model.js';
-import type { RuntimePreference } from '../../../../../../packages/shared/src/entities/types/runtime-preference.type.js';
+import type { Movie } from '@pkg/shared/entities/models/movie.model';
+import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
 import type { MovieFilter } from '../entities/movie-filter.entity.js';
 import type { MovieCatalogRepository } from '../repositories/movies.repository.js';
 

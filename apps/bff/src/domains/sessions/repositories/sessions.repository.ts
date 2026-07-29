@@ -1,5 +1,5 @@
 import type { Client } from '@libsql/client';
-import type { Session } from '../../../../../../packages/shared/src/entities/models/session.model.js';
+import type { Session } from '@pkg/shared/entities/models/session.model';
 
 export interface SessionRepository {
   create(session: Session): Promise<void>;

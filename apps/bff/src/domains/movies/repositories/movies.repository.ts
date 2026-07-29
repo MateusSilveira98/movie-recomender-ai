@@ -1,5 +1,5 @@
-import type { Movie } from '../../../../../../packages/shared/src/entities/models/movie.model.js';
-import { MOVIE_CATALOG_MOCK } from '../../../../../../packages/shared/src/mocks/movie/index.js';
+import type { Movie } from '@pkg/shared/entities/models/movie.model';
+import { MOVIE_CATALOG_MOCK } from '@pkg/shared/mocks/movie';
 
 export interface MovieCatalogRepository {
   list(): Movie[];

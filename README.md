@@ -6,7 +6,7 @@ Aplicacao de recomendacao de filmes para pessoas que nao querem perder tempo esc
 
 Este repositorio usa Nx em formato monorepo:
 
-- `apps/`: aplicacoes deployaveis, como web e api.
+- `apps/`: aplicacoes deployaveis, como web e bff.
 - `packages/`: bibliotecas compartilhadas, como database, ml, recommender e shared.
 - `data/`: dados locais de desenvolvimento e treino. Os CSVs brutos nao devem ser versionados.
 - `models/`: modelos gerados localmente ou por pipeline. Artefatos gerados nao devem ser versionados.
@@ -19,7 +19,7 @@ npm run projects
 npm run check
 npm run build
 npm run dev:web
-npm run dev:api
+npm run dev:bff
 npm run graph
 npm run affected
 ```
@@ -27,5 +27,5 @@ npm run affected
 ## Hello world local
 
 - Web: `http://127.0.0.1:5173`
-- API healthcheck: `http://127.0.0.1:3333/health`
-- API recomendacoes demo: `http://127.0.0.1:3333/recommendations/demo`
+- BFF healthcheck: `http://127.0.0.1:3333/health`
+- BFF recomendacoes demo: `http://127.0.0.1:3333/recommendations/demo`

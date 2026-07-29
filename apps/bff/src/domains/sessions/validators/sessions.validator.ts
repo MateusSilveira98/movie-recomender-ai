@@ -1,11 +1,11 @@
-import { RUNTIME_PREFERENCE_OPTIONS } from '../../../../../../packages/shared/src/entities/consts/runtime-preference-options.const.js';
-import { MOVIE_CATALOG_MOCK } from '../../../../../../packages/shared/src/mocks/movie/index.js';
-import type { CreateSessionRequest } from '../../../../../../packages/shared/src/entities/models/create-session-request.model.js';
-import type { Preferences } from '../../../../../../packages/shared/src/entities/models/preferences.model.js';
-import type { SessionFeedbackRequest } from '../../../../../../packages/shared/src/entities/models/session-feedback-request.model.js';
-import type { ViewerHistory } from '../../../../../../packages/shared/src/entities/models/viewer-history.model.js';
-import type { RuntimePreference } from '../../../../../../packages/shared/src/entities/types/runtime-preference.type.js';
-import type { SessionFeedback } from '../../../../../../packages/shared/src/entities/types/session-feedback.type.js';
+import { RUNTIME_PREFERENCE_OPTIONS } from '@pkg/shared/entities/consts/runtime-preference-options.const';
+import type { CreateSessionRequest } from '@pkg/shared/entities/models/create-session-request.model';
+import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
+import type { SessionFeedbackRequest } from '@pkg/shared/entities/models/session-feedback-request.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
+import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
+import type { SessionFeedback } from '@pkg/shared/entities/types/session-feedback.type';
+import { MOVIE_CATALOG_MOCK } from '@pkg/shared/mocks/movie';
 import type { ValidationResult } from '../../../app/types/validation-result.type.js';
 
 const RUNTIME_PREFERENCE_VALUES = RUNTIME_PREFERENCE_OPTIONS.map((option) => option.value);
