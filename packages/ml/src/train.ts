@@ -1,4 +1,4 @@
-import { createDatabaseClient, resolveDatabaseUrl } from '../../database/src/index.js';
+import { createDatabaseClient, resolveDatabaseUrl } from '@pkg/database';
 
 export interface TrainingJobResult {
   status: 'not-trained-yet';

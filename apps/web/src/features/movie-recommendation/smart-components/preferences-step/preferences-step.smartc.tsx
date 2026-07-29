@@ -11,8 +11,8 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import { RUNTIME_PREFERENCE_OPTIONS } from '@movie-recomender-ai/shared/entities/consts/runtime-preference-options.const';
-import type { RuntimePreference } from '@movie-recomender-ai/shared/entities/types/runtime-preference.type';
+import { RUNTIME_PREFERENCE_OPTIONS } from '@pkg/shared/entities/consts/runtime-preference-options.const';
+import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
 import type { PreferencesStepProps } from './preferences-step.interface';
 
 export function PreferencesStep({

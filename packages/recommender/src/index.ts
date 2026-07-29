@@ -1,11 +1,11 @@
-import { RUNTIME_PREFERENCE_LABELS } from '../../shared/src/entities/consts/runtime-preference-labels.const.js';
-import { MOVIE_CATALOG_MOCK } from '../../shared/src/mocks/movie/index.js';
-import type { Movie } from '../../shared/src/entities/models/movie.model.js';
-import type { Preferences } from '../../shared/src/entities/models/preferences.model.js';
-import type { Recommendation } from '../../shared/src/entities/models/recommendation.model.js';
-import type { SessionProfile } from '../../shared/src/entities/models/session-profile.model.js';
-import type { ViewerHistory } from '../../shared/src/entities/models/viewer-history.model.js';
-import type { RuntimePreference } from '../../shared/src/entities/types/runtime-preference.type.js';
+import { RUNTIME_PREFERENCE_LABELS } from '@pkg/shared/entities/consts/runtime-preference-labels.const';
+import type { Movie } from '@pkg/shared/entities/models/movie.model';
+import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
+import type { Recommendation } from '@pkg/shared/entities/models/recommendation.model';
+import type { SessionProfile } from '@pkg/shared/entities/models/session-profile.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
+import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
+import { MOVIE_CATALOG_MOCK } from '@pkg/shared/mocks/movie';
 
 export function getRecommendations(preferences: Preferences, history: ViewerHistory): Recommendation[] {
   return MOVIE_CATALOG_MOCK

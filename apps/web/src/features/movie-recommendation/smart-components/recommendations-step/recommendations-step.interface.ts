@@ -1,4 +1,4 @@
-import type { Recommendation } from '@movie-recomender-ai/shared/entities/models/recommendation.model';
+import type { Recommendation } from '@pkg/shared/entities/models/recommendation.model';
 import type { RequestStatus } from '../../entities/types/request-status.type';
 import type { RecommendationRound } from '../../data-access/services/ui-services/movie-session.ui.service';
 

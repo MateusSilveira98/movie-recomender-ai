@@ -1,5 +1,5 @@
 import { Box, Chip, Stack, Typography } from '@mui/material';
-import { MOVIE_CATALOG_MOCK } from '@movie-recomender-ai/shared/mocks/movie';
+import { MOVIE_CATALOG_MOCK } from '@pkg/shared/mocks/movie';
 import type { HistoryLineProps } from './history-line.interface';
 
 export function HistoryLine({ label, movieIds }: HistoryLineProps) {

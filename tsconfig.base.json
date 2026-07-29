@@ -20,11 +20,13 @@
     "strict": true,
     "target": "ES2022",
     "paths": {
-      "@movie-recomender-ai/database": ["packages/database/src/index.ts"],
-      "@movie-recomender-ai/ml": ["packages/ml/src/index.ts"],
-      "@movie-recomender-ai/recommender": ["packages/recommender/src/index.ts"],
-      "@movie-recomender-ai/shared": ["packages/shared/src/index.ts"],
-      "@movie-recomender-ai/shared/*": ["packages/shared/src/*"]
+      "@pkg/database": ["packages/database/src/index.ts"],
+      "@pkg/ml": ["packages/ml/src/index.ts"],
+      "@pkg/recommender": ["packages/recommender/src/index.ts"],
+      "@pkg/shared/data-access/*": ["packages/shared/src/data-access/*.ts", "packages/shared/src/data-access/*/index.ts"],
+      "@pkg/shared/entities/*": ["packages/shared/src/entities/*.ts"],
+      "@pkg/shared/mocks/*": ["packages/shared/src/mocks/*/index.ts", "packages/shared/src/mocks/*.ts"],
+      "@pkg/logger": ["packages/logger/src/index.ts"],
     }
   }
 }

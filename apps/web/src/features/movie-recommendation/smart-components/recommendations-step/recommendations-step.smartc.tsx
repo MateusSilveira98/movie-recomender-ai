@@ -16,8 +16,8 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import { RUNTIME_PREFERENCE_LABELS } from '@movie-recomender-ai/shared/entities/consts/runtime-preference-labels.const';
-import { formatMinutes } from '@movie-recomender-ai/shared/data-access/services/ui-services/movie-format.ui.service';
+import { RUNTIME_PREFERENCE_LABELS } from '@pkg/shared/entities/consts/runtime-preference-labels.const';
+import { formatMinutes } from '@pkg/shared/data-access/services/ui-services/movie-format.ui.service';
 import { useState } from 'react';
 import { HistoryLine } from '../../dumb-components/history-line/history-line.dumbc';
 import type { RecommendationResultTab } from '../../entities/types/recommendation-result-tab.type';

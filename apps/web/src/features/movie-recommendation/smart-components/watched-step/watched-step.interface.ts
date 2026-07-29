@@ -1,5 +1,5 @@
-import type { Movie } from '@movie-recomender-ai/shared/entities/models/movie.model';
-import type { ViewerHistory } from '@movie-recomender-ai/shared/entities/models/viewer-history.model';
+import type { Movie } from '@pkg/shared/entities/models/movie.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
 import type { RequestStatus } from '../../entities/types/request-status.type';
 
 export interface WatchedStepProps {

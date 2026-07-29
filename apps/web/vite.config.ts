@@ -5,8 +5,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@movie-recomender-ai/recommender': new URL('../../packages/recommender/src/index.ts', import.meta.url).pathname,
-      '@movie-recomender-ai/shared': new URL('../../packages/shared/src', import.meta.url).pathname,
+      '@pkg/recommender': new URL('../../packages/recommender/src/index.ts', import.meta.url).pathname,
+      '@pkg/shared': new URL('../../packages/shared/src', import.meta.url).pathname,
     },
   },
   server: {
