@@ -3,56 +3,56 @@ services:
     image: ghcr.io/tursodatabase/libsql-server@sha256:528e068844b4bc5b87fb128da87e98d361d3414c4e1cced7b943939248e0ed2f
     platform: linux/amd64
     environment:
-      SQLD_DB_PATH: /var/lib/sqld/movie-recomender-ai.db
-      SQLD_HTTP_LISTEN_ADDR: 0.0.0.0:8080
-      SQLD_GRPC_LISTEN_ADDR: 0.0.0.0:8081
+      SQLD_DB_PATH: ${SQLD_DB_PATH}
+      SQLD_HTTP_LISTEN_ADDR: ${SQLD_HTTP_LISTEN_ADDR}
+      SQLD_GRPC_LISTEN_ADDR: ${SQLD_GRPC_LISTEN_ADDR}
     ports:
-      - "127.0.0.1:18080:8080"
-      - "127.0.0.1:18081:8081"
+      - "${SQLD_HTTP_HOST_PORT}:8080"
+      - "${SQLD_GRPC_HOST_PORT}:8081"
     volumes:
-      - database-data:/var/lib/sqld
+      - database-data:${DATABASE_DATA_DIR}
 
   migrate:
     image: node:22.16.0-alpine
-    working_dir: /workspace
+    working_dir: ${WORKSPACE_DIR}
     command: sh -lc "npm ci --no-audit && npm exec -- tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts"
     environment:
-      DATABASE_URL: http://database:8080
+      DATABASE_URL: ${DATABASE_URL}
     volumes:
-      - .:/workspace
-      - workspace-node-modules:/workspace/node_modules
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules
     depends_on:
       - database
 
   bff:
     image: node:22.16.0-alpine
-    working_dir: /workspace
+    working_dir: ${WORKSPACE_DIR}
     command: npm run dev:bff
     environment:
-      PORT: 3333
-      DATABASE_URL: http://database:8080
-      WEB_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
+      PORT: ${BFF_PORT}
+      DATABASE_URL: ${DATABASE_URL}
+      WEB_ORIGIN: ${WEB_ORIGIN}
     ports:
-      - "127.0.0.1:3333:3333"
+      - "${BFF_HOST_PORT}:${BFF_PORT}"
     volumes:
-      - .:/workspace
-      - workspace-node-modules:/workspace/node_modules
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules
     depends_on:
       migrate:
         condition: service_completed_successfully
 
   worker:
     image: node:22.16.0-alpine
-    working_dir: /workspace
+    working_dir: ${WORKSPACE_DIR}
     command: npx nx run recommender:import-dataset
     environment:
-      APP_ENV: docker-local
-      DATABASE_URL: http://database:8080
-      MOVIES_DATASET_DIR: /dataset
+      APP_ENV: ${APP_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      MOVIES_DATASET_DIR: ${MOVIES_DATASET_DIR}
     volumes:
-      - .:/workspace
-      - workspace-node-modules:/workspace/node_modules
-      - /Users/mateus.costa/Projects/IA/MoviesDataset:/dataset:ro
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules
+      - ${MOVIES_DATASET_HOST_DIR:?Defina MOVIES_DATASET_HOST_DIR no .env}:${MOVIES_DATASET_DIR}:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
