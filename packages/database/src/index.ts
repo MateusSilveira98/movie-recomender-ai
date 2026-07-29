@@ -16,11 +16,11 @@ export const DATABASE_SCHEMA_MANIFEST: DatabaseSchemaManifest = {
   tables: [
     'movies',
     'movie_genres',
-    'movie_keywords',
     'movie_cast',
     'movie_crew',
     'movie_features',
     'movie_ratings_stats',
+    'dataset_import_runs',
     'sessions',
     'session_preferences',
     'session_movie_feedback',

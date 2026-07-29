@@ -6,7 +6,7 @@
   "tags": ["scope:database", "type:package"],
   "targets": {
     "migrate": {
-      "command": "tsx packages/database/src/apply-schema.ts"
+      "command": "tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts"
     },
     "typecheck": {
       "command": "tsc -p packages/database/tsconfig.json --noEmit"

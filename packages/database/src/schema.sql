@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS movies (
   status TEXT NOT NULL DEFAULT '',
   release_date TEXT,
   release_year INTEGER NOT NULL,
-  runtime_minutes INTEGER NOT NULL CHECK (runtime_minutes > 0),
+  runtime_minutes INTEGER NOT NULL CHECK (runtime_minutes >= 0),
   adult INTEGER NOT NULL DEFAULT 0 CHECK (adult IN (0, 1)),
   popularity REAL NOT NULL DEFAULT 0 CHECK (popularity >= 0),
   vote_average REAL NOT NULL DEFAULT 0 CHECK (vote_average >= 0),
@@ -33,16 +33,6 @@ CREATE TABLE IF NOT EXISTS movie_genres (
   genre_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (movie_id, genre_id),
-  FOREIGN KEY (movie_id) REFERENCES movies (id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS movie_keywords (
-  movie_id TEXT NOT NULL,
-  keyword_id INTEGER NOT NULL,
-  keyword_name TEXT NOT NULL,
-  keyword_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (movie_id, keyword_id),
   FOREIGN KEY (movie_id) REFERENCES movies (id) ON DELETE CASCADE
 );
 
@@ -78,7 +68,6 @@ CREATE TABLE IF NOT EXISTS movie_features (
   movie_id TEXT PRIMARY KEY,
   summary_text TEXT NOT NULL DEFAULT '',
   genres_json TEXT NOT NULL DEFAULT '[]',
-  keywords_json TEXT NOT NULL DEFAULT '[]',
   cast_json TEXT NOT NULL DEFAULT '[]',
   crew_json TEXT NOT NULL DEFAULT '[]',
   feature_vector_json TEXT NOT NULL DEFAULT '[]',
@@ -102,6 +91,20 @@ CREATE TABLE IF NOT EXISTS movie_ratings_stats (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (movie_id) REFERENCES movies (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_runs (
+  id TEXT PRIMARY KEY,
+  dataset_key TEXT NOT NULL,
+  dataset_version TEXT NOT NULL,
+  environment TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+  started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT,
+  movies_imported INTEGER NOT NULL DEFAULT 0 CHECK (movies_imported >= 0),
+  features_imported INTEGER NOT NULL DEFAULT 0 CHECK (features_imported >= 0),
+  rating_stats_imported INTEGER NOT NULL DEFAULT 0 CHECK (rating_stats_imported >= 0),
+  error_message TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -130,7 +133,6 @@ CREATE TABLE IF NOT EXISTS session_movie_feedback (
   feedback TEXT NOT NULL CHECK (feedback IN ('watched', 'liked', 'disliked')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
-  FOREIGN KEY (movie_id) REFERENCES movies (id) ON DELETE CASCADE,
   UNIQUE (session_id, movie_id, feedback)
 );
 
@@ -156,10 +158,11 @@ CREATE TABLE IF NOT EXISTS recommendation_feedback (
 );
 
 CREATE INDEX IF NOT EXISTS idx_movie_genres_genre_name ON movie_genres (genre_name);
-CREATE INDEX IF NOT EXISTS idx_movie_keywords_keyword_name ON movie_keywords (keyword_name);
 CREATE INDEX IF NOT EXISTS idx_movie_cast_person_name ON movie_cast (person_name);
 CREATE INDEX IF NOT EXISTS idx_movie_crew_person_name ON movie_crew (person_name);
 CREATE INDEX IF NOT EXISTS idx_movie_ratings_stats_rating_average ON movie_ratings_stats (rating_average);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_runs_lookup ON dataset_import_runs (dataset_key, environment, started_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_import_runs_running ON dataset_import_runs (dataset_key, environment) WHERE status = 'running';
 CREATE INDEX IF NOT EXISTS idx_sessions_status_created_at ON sessions (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_session_preferences_session_id ON session_preferences (session_id);
 CREATE INDEX IF NOT EXISTS idx_session_movie_feedback_session_id ON session_movie_feedback (session_id);
