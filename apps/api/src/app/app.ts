@@ -1,18 +1,19 @@
 import cors from 'cors';
 import express from 'express';
-import { getDatabaseHealth } from '../../../../packages/database/src/index.js';
+import { createDatabaseClient, getDatabaseHealth } from '../../../../packages/database/src/index.js';
 import { getTrainingPipelineStatus } from '../../../../packages/ml/src/index.js';
 import { getDemoRecommendations } from '../../../../packages/recommender/src/index.js';
 import { createSessionProfile } from '../../../../packages/shared/src/data-access/factories/session-profile.factory.js';
 import { getHealthMessage } from '../../../../packages/shared/src/data-access/services/api-services/health/index.js';
-import { createInMemorySessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
+import { createSqlSessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
 import { createAppRouter } from './routes.js';
 
 const LOCAL_WEB_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/;
 
 export function createApp(): express.Express {
   const app = express();
-  const sessionRepository = createInMemorySessionRepository();
+  const databaseClient = createDatabaseClient();
+  const sessionRepository = createSqlSessionRepository(databaseClient);
 
   app.use(
     cors({
@@ -28,11 +29,11 @@ export function createApp(): express.Express {
   );
   app.use(express.json());
 
-  app.get('/health', (_request, response) => {
+  app.get('/health', async (_request, response) => {
     response.json({
       status: 'ok',
       message: getHealthMessage('api'),
-      database: getDatabaseHealth(),
+      database: await getDatabaseHealth(),
       ml: getTrainingPipelineStatus(),
     });
   });

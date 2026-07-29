@@ -8,14 +8,14 @@ import { applyFeedbackToHistory } from './session-feedback.service.js';
 import { generateSessionId } from './session-id.service.js';
 
 export interface SessionsService {
-  create(request: CreateSessionRequest): Session;
-  findRecommendations(sessionId: string): { recommendations: Recommendation[]; sessionId: string } | null;
-  applyFeedback(sessionId: string, request: SessionFeedbackRequest): Session | null;
+  create(request: CreateSessionRequest): Promise<Session>;
+  findRecommendations(sessionId: string): Promise<{ recommendations: Recommendation[]; sessionId: string } | null>;
+  applyFeedback(sessionId: string, request: SessionFeedbackRequest): Promise<Session | null>;
 }
 
 export function createSessionsService(sessionRepository: SessionRepository): SessionsService {
   return {
-    create(request) {
+    async create(request) {
       const session: Session = {
         id: generateSessionId(),
         preferences: request.preferences,
@@ -23,12 +23,12 @@ export function createSessionsService(sessionRepository: SessionRepository): Ses
         createdAt: new Date().toISOString(),
       };
 
-      sessionRepository.create(session);
+      await sessionRepository.create(session);
 
       return session;
     },
-    findRecommendations(sessionId) {
-      const session = sessionRepository.findById(sessionId);
+    async findRecommendations(sessionId) {
+      const session = await sessionRepository.findById(sessionId);
 
       if (!session) {
         return null;
@@ -39,8 +39,8 @@ export function createSessionsService(sessionRepository: SessionRepository): Ses
         recommendations: getRecommendations(session.preferences, session.history),
       };
     },
-    applyFeedback(sessionId, request) {
-      const session = sessionRepository.findById(sessionId);
+    async applyFeedback(sessionId, request) {
+      const session = await sessionRepository.findById(sessionId);
 
       if (!session) {
         return null;
@@ -51,7 +51,7 @@ export function createSessionsService(sessionRepository: SessionRepository): Ses
         history: applyFeedbackToHistory(session.history, request.movieId, request.feedback),
       };
 
-      sessionRepository.save(updatedSession);
+      await sessionRepository.save(updatedSession);
 
       return updatedSession;
     },
