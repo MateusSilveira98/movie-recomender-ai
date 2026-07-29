@@ -27,36 +27,24 @@ services:
   bff:
     image: node:22.16.0-alpine
     working_dir: ${WORKSPACE_DIR}
-    command: npm run dev:bff
+    command: npx tsx watch --tsconfig tsconfig.base.json apps/bff/src/main.ts
     environment:
       PORT: ${BFF_PORT}
       DATABASE_URL: ${DATABASE_URL}
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES}
+      UPLOAD_STORAGE_DIR: ${UPLOAD_STORAGE_DIR}
       WEB_ORIGIN: ${WEB_ORIGIN}
     ports:
       - "${BFF_HOST_PORT}:${BFF_PORT}"
     volumes:
       - .:${WORKSPACE_DIR}
       - workspace-node-modules:${WORKSPACE_DIR}/node_modules
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-
-  worker:
-    image: node:22.16.0-alpine
-    working_dir: ${WORKSPACE_DIR}
-    command: npx nx run recommender:import-dataset
-    environment:
-      APP_ENV: ${APP_ENV}
-      DATABASE_URL: ${DATABASE_URL}
-      MOVIES_DATASET_DIR: ${MOVIES_DATASET_DIR}
-    volumes:
-      - .:${WORKSPACE_DIR}
-      - workspace-node-modules:${WORKSPACE_DIR}/node_modules
-      - ${MOVIES_DATASET_HOST_DIR:?Defina MOVIES_DATASET_HOST_DIR no .env}:${MOVIES_DATASET_DIR}:ro
+      - upload-data:${UPLOAD_STORAGE_DIR}
     depends_on:
       migrate:
         condition: service_completed_successfully
 
 volumes:
   database-data:
+  upload-data:
   workspace-node-modules:

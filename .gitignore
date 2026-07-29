@@ -155,3 +155,4 @@ data/processed/
 models/**
 !models/.gitkeep
 *.db
+.uploads/

@@ -2,7 +2,7 @@ COMPOSE := docker compose
 BACKEND_PROJECTS := bff,database,recommender,logger
 
 .DEFAULT_GOAL := help
-.PHONY: help build check lint test up up-recreate down ps logs logs-bff logs-database logs-worker migrate worker
+.PHONY: help build check lint test up up-recreate down ps logs logs-bff logs-database migrate process-queue
 
 help: ## Exibe os comandos disponíveis para o backend
 	@awk 'BEGIN {FS = ":.*##"}; /^[a-zA-Z0-9_-]+:.*##/ {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -18,7 +18,7 @@ lint: check ## Executa a análise estática disponível (TypeScript)
 test: ## Executa as suítes de teste configuradas do backend
 	npx nx run-many -t test --projects=logger,recommender
 
-up: ## Sobe banco, migration, BFF e worker
+up: ## Sobe banco, migration e BFF
 	$(COMPOSE) up -d --remove-orphans
 
 up-recreate: ## Recria os containers do backend sem apagar o volume do banco
@@ -30,8 +30,8 @@ down: ## Para o backend sem apagar os dados locais
 ps: ## Mostra o estado dos serviços
 	$(COMPOSE) ps --all
 
-logs: ## Acompanha os logs de banco, BFF e worker
-	$(COMPOSE) logs -f database bff worker
+logs: ## Acompanha os logs de banco e BFF
+	$(COMPOSE) logs -f database bff
 
 logs-bff: ## Acompanha os logs do BFF
 	$(COMPOSE) logs -f bff
@@ -39,11 +39,8 @@ logs-bff: ## Acompanha os logs do BFF
 logs-database: ## Acompanha os logs do libSQL
 	$(COMPOSE) logs -f database
 
-logs-worker: ## Acompanha os logs do worker de dataset
-	$(COMPOSE) logs -f worker
-
 migrate: ## Executa somente a migration do banco
 	$(COMPOSE) run --rm --no-deps migrate
 
-worker: ## Executa manualmente o worker one-shot de importação
-	$(COMPOSE) run --rm --no-deps worker
+process-queue: ## Processa manualmente jobs pendentes da fila
+	$(COMPOSE) exec bff npx nx run recommender:import-dataset
