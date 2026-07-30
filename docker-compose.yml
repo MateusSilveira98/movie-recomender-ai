@@ -44,6 +44,21 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  train:
+    build:
+      context: .
+      dockerfile: Dockerfile.train
+    profiles:
+      - maintenance
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      TRAINING_MODEL_DIR: /models/movie-recommender-baseline
+    volumes:
+      - ./models:/models
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   database-data:
   upload-data:

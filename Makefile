@@ -1,8 +1,9 @@
-COMPOSE := docker compose
+COMPOSE_FILES := -f docker-compose.yml $(if $(wildcard docker-compose.override.yml),-f docker-compose.override.yml) $(if $(wildcard docker-compose.corporate-ca.yml),-f docker-compose.corporate-ca.yml)
+COMPOSE := docker compose $(COMPOSE_FILES)
 BACKEND_PROJECTS := bff,database,recommender,logger
 
 .DEFAULT_GOAL := help
-.PHONY: help build check lint test up up-recreate down ps logs logs-bff logs-database migrate process-queue
+.PHONY: help build check lint test up up-recreate down ps logs logs-bff logs-database migrate process-queue train
 
 help: ## Exibe os comandos disponíveis para o backend
 	@awk 'BEGIN {FS = ":.*##"}; /^[a-zA-Z0-9_-]+:.*##/ {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -44,3 +45,6 @@ migrate: ## Executa somente a migration do banco
 
 process-queue: ## Processa manualmente jobs pendentes da fila
 	$(COMPOSE) exec bff npx nx run recommender:import-dataset
+
+train: ## Treina e exporta o modelo TensorFlow offline
+	$(COMPOSE) run --rm train

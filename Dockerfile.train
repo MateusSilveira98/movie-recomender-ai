@@ -1,0 +1,17 @@
+FROM node:22.16.0-bookworm-slim
+
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+RUN --mount=type=secret,id=corporate_ca,target=/run/secrets/corporate-ca.pem,required=false \
+    if [ -s /run/secrets/corporate-ca.pem ]; then \
+      NODE_EXTRA_CA_CERTS=/run/secrets/corporate-ca.pem npm ci --no-audit --foreground-scripts --loglevel=error; \
+    else \
+      npm ci --no-audit --foreground-scripts --loglevel=error; \
+    fi
+
+COPY tsconfig.base.json ./
+COPY packages/database/src ./packages/database/src
+COPY packages/ml/src ./packages/ml/src
+
+CMD ["npm", "exec", "--", "tsx", "--tsconfig", "tsconfig.base.json", "packages/ml/src/train.ts"]
