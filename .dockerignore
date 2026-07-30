@@ -1,0 +1,11 @@
+.git
+.nx
+.uploads
+data
+dist
+models
+node_modules
+.env
+.env.*
+!.env.example
+*.db

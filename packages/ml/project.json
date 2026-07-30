@@ -7,6 +7,9 @@
   "targets": {
     "typecheck": {
       "command": "tsc -p packages/ml/tsconfig.json --noEmit"
+    },
+    "test": {
+      "command": "tsx --tsconfig tsconfig.base.json --test packages/ml/src/**/*.spec.ts"
     }
   }
 }
