@@ -47,4 +47,4 @@ process-queue: ## Processa manualmente jobs pendentes da fila
 	$(COMPOSE) exec bff npx nx run recommender:import-dataset
 
 train: ## Treina e exporta o modelo TensorFlow offline
-	$(COMPOSE) run --rm train
+	$(COMPOSE) run --rm --build train
