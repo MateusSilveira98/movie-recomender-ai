@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { calculateRegressionMetrics } from './domain/services/regression-metrics.service.js';
-import { prepareTrainingData } from './domain/services/training-data-preparation.service.js';
+import { ensureMinimumTrainingRecords, prepareTrainingData } from './domain/services/training-data-preparation.service.js';
 import { splitTrainingData } from './domain/services/training-data-split.service.js';
 
 const records = [
@@ -28,11 +28,18 @@ describe('dados de treino', () => {
   });
 
   it('separa validação determinística sem perder exemplos', () => {
-    const data = prepareTrainingData(records);
-    const split = splitTrainingData(data);
+    const split = splitTrainingData(records);
 
-    assert.equal(split.train.features.length, 3);
-    assert.equal(split.validation.features.length, 1);
+    assert.equal(split.train.length, 3);
+    assert.equal(split.validation.length, 1);
+  });
+
+  it('rejeita conjuntos insuficientes para o treino', () => {
+    assert.throws(() => ensureMinimumTrainingRecords(records.slice(0, 3)), /São necessários pelo menos quatro filmes/);
+  });
+
+  it('rejeita médias de avaliação fora da escala do modelo', () => {
+    assert.throws(() => prepareTrainingData([{ ...records[0], ratingAverage: 5.1 }]), /fora da escala esperada/);
   });
 
   it('calcula MAE e MSE', () => {

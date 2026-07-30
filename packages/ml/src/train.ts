@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { createDatabaseClient, resolveDatabaseUrl } from '@pkg/database';
+import { createDatabaseClient } from '@pkg/database';
 import { trainModel } from './application/services/train-model.service.js';
 import { createFileSystemTrainedModelPublisher } from './infrastructure/publishing/file-system-trained-model.publisher.js';
 import { createLibsqlTrainingRecordRepository } from './infrastructure/persistence/libsql-training-record.repository.js';
@@ -8,7 +8,6 @@ import { createTensorflowTrainingModel } from './infrastructure/tensorflow/tenso
 export interface TrainingJobResult {
   status: 'trained';
   modelName: 'movie-recommender-baseline';
-  databaseUrl: string;
   metrics: { mae: number; mse: number };
   modelPath: string;
   trainingRecordCount: number;
@@ -26,7 +25,6 @@ export async function runTrainingJob(): Promise<TrainingJobResult> {
     });
 
     return {
-      databaseUrl: resolveDatabaseUrl(),
       metrics: result.metrics,
       modelName: 'movie-recommender-baseline',
       modelPath: result.modelPath,

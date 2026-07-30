@@ -51,7 +51,7 @@ async function seedTrainingDatabase(client: Client): Promise<void> {
   await client.executeMultiple(`
     CREATE TABLE movies (id TEXT PRIMARY KEY, popularity REAL NOT NULL, vote_average REAL NOT NULL);
     CREATE TABLE movie_ratings_stats (movie_id TEXT PRIMARY KEY, rating_average REAL NOT NULL, rating_count INTEGER NOT NULL, rating_stddev REAL NOT NULL);
-    INSERT INTO movies VALUES ('1', 10, 8), ('2', 20, 7), ('3', 5, 6), ('4', 15, 9);
-    INSERT INTO movie_ratings_stats VALUES ('1', 4, 100, 0.5), ('2', 3, 25, 1), ('3', 2.5, 4, 0.75), ('4', 4.5, 50, 0.25);
+    INSERT INTO movies VALUES ('1', 10, 8), ('2', 20, 7), ('3', 5, 6), ('4', 200, 9);
+    INSERT INTO movie_ratings_stats VALUES ('1', 4, 100, 0.5), ('2', 3, 25, 1), ('3', 2.5, 4, 0.75), ('4', 4.5, 500, 0.25);
   `);
 }

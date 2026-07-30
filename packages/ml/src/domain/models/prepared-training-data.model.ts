@@ -13,11 +13,6 @@ export interface TrainingFeatureScales {
   voteAverage: number;
 }
 
-export interface TrainingDataSplit {
-  train: PreparedTrainingData;
-  validation: PreparedTrainingData;
-}
-
 export interface RegressionMetrics {
   mae: number;
   mse: number;

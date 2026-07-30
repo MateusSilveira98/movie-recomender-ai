@@ -1,5 +1,5 @@
 import { calculateRegressionMetrics } from '../../domain/services/regression-metrics.service.js';
-import { prepareTrainingData } from '../../domain/services/training-data-preparation.service.js';
+import { ensureMinimumTrainingRecords, prepareTrainingData } from '../../domain/services/training-data-preparation.service.js';
 import { splitTrainingData } from '../../domain/services/training-data-split.service.js';
 import type { TrainingModelPort } from '../ports/training-model.port.js';
 import type { TrainingRecordRepository } from '../ports/training-record.repository.port.js';
@@ -13,20 +13,22 @@ export interface TrainingResult {
 
 export async function trainModel(dependencies: TrainingDependencies): Promise<TrainingResult> {
   const records = await dependencies.records.list();
-  const data = prepareTrainingData(records);
-  const split = splitTrainingData(data);
-  const model = dependencies.model.create(data.featureNames.length);
+  ensureMinimumTrainingRecords(records);
+  const split = splitTrainingData(records);
+  const trainData = prepareTrainingData(split.train);
+  const validationData = prepareTrainingData(split.validation, trainData.featureScales);
+  const model = dependencies.model.create(trainData.featureNames.length);
 
   try {
-    await dependencies.model.train(model, split.train, split.validation);
-    const predictions = dependencies.model.predict(model, split.validation.features).map((value) => value * data.targetScale);
-    const labels = split.validation.labels.map((value) => value * data.targetScale);
+    await dependencies.model.train(model, trainData, validationData);
+    const predictions = dependencies.model.predict(model, validationData.features).map((value) => value * trainData.targetScale);
+    const labels = validationData.labels.map((value) => value * trainData.targetScale);
     const metrics = calculateRegressionMetrics(predictions, labels);
     const modelPath = await dependencies.publisher.publish(model, {
-      featureNames: data.featureNames,
-      featureScales: data.featureScales,
+      featureNames: trainData.featureNames,
+      featureScales: trainData.featureScales,
       metrics,
-      targetScale: data.targetScale,
+      targetScale: trainData.targetScale,
       trainedAt: dependencies.clock().toISOString(),
     });
 

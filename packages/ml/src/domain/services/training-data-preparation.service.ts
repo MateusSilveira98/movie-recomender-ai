@@ -5,9 +5,10 @@ const FEATURE_NAMES = ['ratingCountLog', 'ratingStddev', 'popularity', 'voteAver
 const RATING_SCALE = 5;
 const MINIMUM_TRAINING_RECORDS = 4;
 
-export function prepareTrainingData(records: readonly MovieTrainingRecord[]): PreparedTrainingData {
-  ensureMinimumRecords(records);
-  const scales = createFeatureScales(records);
+export function prepareTrainingData(records: readonly MovieTrainingRecord[], featureScales?: TrainingFeatureScales): PreparedTrainingData {
+  ensureRecords(records);
+  records.forEach(ensureValidRecord);
+  const scales = featureScales ?? createFeatureScales(records);
 
   return {
     featureNames: FEATURE_NAMES,
@@ -18,9 +19,27 @@ export function prepareTrainingData(records: readonly MovieTrainingRecord[]): Pr
   };
 }
 
-function ensureMinimumRecords(records: readonly MovieTrainingRecord[]): void {
+export function ensureMinimumTrainingRecords(records: readonly MovieTrainingRecord[]): void {
   if (records.length < MINIMUM_TRAINING_RECORDS) {
     throw new Error('São necessários pelo menos quatro filmes com estatísticas de avaliações para treinar o modelo.');
+  }
+}
+
+function ensureRecords(records: readonly MovieTrainingRecord[]): void {
+  if (records.length === 0) {
+    throw new Error('São necessários registros para preparar os dados de treino.');
+  }
+}
+
+function ensureValidRecord(record: MovieTrainingRecord): void {
+  const values = [record.popularity, record.ratingAverage, record.ratingCount, record.ratingStddev, record.voteAverage];
+
+  if (!values.every((value) => Number.isFinite(value) && value >= 0)) {
+    throw new Error('As estatísticas de avaliações contêm valores inválidos para o treino.');
+  }
+
+  if (record.ratingAverage > RATING_SCALE || record.voteAverage > 10) {
+    throw new Error('As estatísticas de avaliações estão fora da escala esperada para o treino.');
   }
 }
 
