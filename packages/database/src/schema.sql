@@ -148,10 +148,37 @@ CREATE TABLE IF NOT EXISTS dataset_import_jobs (
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
+  profile_id TEXT,
+  expires_at_ms INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   completed_at TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'abandoned'))
+);
+
+CREATE TABLE IF NOT EXISTS anonymous_profiles (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at_ms INTEGER NOT NULL,
+  last_seen_at_ms INTEGER NOT NULL,
+  expires_at_ms INTEGER NOT NULL,
+  invalidated_at_ms INTEGER,
+  CHECK (expires_at_ms > created_at_ms)
+);
+
+CREATE TABLE IF NOT EXISTS anonymous_profile_preferences (
+  profile_id TEXT PRIMARY KEY,
+  genres_json TEXT NOT NULL DEFAULT '[]',
+  runtime_preference TEXT NOT NULL CHECK (runtime_preference IN ('any', 'short', 'medium', 'long')),
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS anonymous_profile_movie_feedback (
+  profile_id TEXT NOT NULL,
+  movie_id TEXT NOT NULL,
+  feedback TEXT NOT NULL CHECK (feedback IN ('watched', 'liked', 'disliked')),
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (profile_id, movie_id)
 );
 
 CREATE TABLE IF NOT EXISTS session_preferences (
@@ -194,6 +221,37 @@ CREATE TABLE IF NOT EXISTS recommendation_feedback (
   FOREIGN KEY (recommendation_event_id) REFERENCES recommendation_events (id) ON DELETE CASCADE,
   FOREIGN KEY (movie_id) REFERENCES movies (id) ON DELETE CASCADE,
   UNIQUE (recommendation_event_id, movie_id)
+);
+
+CREATE TABLE IF NOT EXISTS recommendation_rounds (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL CHECK (sequence > 0),
+  genres_json TEXT NOT NULL DEFAULT '[]',
+  runtime_preference TEXT NOT NULL CHECK (runtime_preference IN ('any', 'short', 'medium', 'long')),
+  ranking_version TEXT NOT NULL,
+  candidate_count INTEGER NOT NULL CHECK (candidate_count >= 0),
+  created_at_ms INTEGER NOT NULL,
+  UNIQUE (session_id, sequence)
+);
+
+CREATE TABLE IF NOT EXISTS recommendation_impressions (
+  id TEXT PRIMARY KEY,
+  round_id TEXT NOT NULL,
+  movie_id TEXT NOT NULL,
+  position INTEGER NOT NULL CHECK (position > 0),
+  score REAL NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  UNIQUE (round_id, movie_id)
+);
+
+CREATE TABLE IF NOT EXISTS recommendation_impression_feedbacks (
+  id TEXT PRIMARY KEY,
+  impression_id TEXT NOT NULL UNIQUE,
+  feedback TEXT NOT NULL CHECK (feedback IN ('liked', 'disliked', 'watched_neutral', 'blocked')),
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_movie_genres_genre_name ON movie_genres (genre_name);

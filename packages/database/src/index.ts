@@ -25,10 +25,16 @@ export const DATABASE_SCHEMA_MANIFEST: DatabaseSchemaManifest = {
     'dataset_uploads',
     'dataset_import_jobs',
     'sessions',
+    'anonymous_profiles',
+    'anonymous_profile_preferences',
+    'anonymous_profile_movie_feedback',
     'session_preferences',
     'session_movie_feedback',
     'recommendation_events',
     'recommendation_feedback',
+    'recommendation_rounds',
+    'recommendation_impressions',
+    'recommendation_impression_feedbacks',
   ],
 };
 

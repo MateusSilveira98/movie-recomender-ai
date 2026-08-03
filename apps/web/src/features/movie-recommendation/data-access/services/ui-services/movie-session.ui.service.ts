@@ -5,14 +5,7 @@ import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.m
 export interface RecommendationRound {
   id: string;
   createdAt: string;
-  sessionId: string | null;
   preferences: Preferences;
   history: ViewerHistory;
   recommendations: Recommendation[];
-}
-
-export interface StoredSession {
-  preferences: Preferences;
-  history: ViewerHistory;
-  rounds: RecommendationRound[];
 }

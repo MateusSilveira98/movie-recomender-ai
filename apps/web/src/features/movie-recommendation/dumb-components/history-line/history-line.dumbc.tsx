@@ -1,20 +1,17 @@
 import { Box, Chip, Stack, Typography } from '@mui/material';
-import { MOVIE_CATALOG_MOCK } from '@pkg/shared/mocks/movie';
 import type { HistoryLineProps } from './history-line.interface';
 
-export function HistoryLine({ label, movieIds }: HistoryLineProps) {
-  const movies = MOVIE_CATALOG_MOCK.filter((movie) => movieIds.includes(movie.id));
-
+export function HistoryLine({ label, movieIds, movieTitles }: HistoryLineProps) {
   return (
     <Box>
       <Typography variant="subtitle2">{label}</Typography>
       <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mt: 1 }}>
-        {movies.length === 0 ? (
+        {movieIds.length === 0 ? (
           <Typography color="text.secondary" variant="body2">
             Nenhum filme ainda.
           </Typography>
         ) : (
-          movies.map((movie) => <Chip key={movie.id} label={movie.title} size="small" />)
+          movieIds.map((movieId) => <Chip key={movieId} label={movieTitles?.[movieId] ?? 'Filme selecionado'} size="small" />)
         )}
       </Stack>
     </Box>

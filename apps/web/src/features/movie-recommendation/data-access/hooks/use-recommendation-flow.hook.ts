@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Movie } from '@pkg/shared/entities/models/movie.model';
 import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
 import type { Recommendation } from '@pkg/shared/entities/models/recommendation.model';
+import type { RecommendationRound as StoredRecommendationRound } from '@pkg/shared/entities/models/recommendation-round.model';
 import type { Session } from '@pkg/shared/entities/models/session.model';
 import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
 import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
@@ -10,18 +11,20 @@ import type { RecommendationStepId } from '../../entities/types/recommendation-s
 import type { RequestStatus } from '../../entities/types/request-status.type';
 import {
   createRecommendationSession,
+  fetchCurrentSession,
   fetchGenreOptions,
   fetchMovieCatalog,
-  fetchSessionRecommendations,
+  type SessionRecommendation,
   sendSessionFeedback,
 } from '../services/api-services/recommendation-api.service';
 import type { RecommendationRound } from '../services/ui-services/movie-session.ui.service';
-import { saveStoredSession, loadStoredSession } from '../services/ui-services/session-storage.ui.service';
 import { toggleItem } from '../../../../shared/data-access/services/ui-services/selection.ui.service';
 
 const MOVIE_CANDIDATE_LIMIT = 10;
+const LEGACY_SESSION_STORAGE_KEY = 'movie-recommender-ai-session';
 
 export function useRecommendationFlow() {
+  const didRestoreCurrentSession = useRef(false);
   const [activeStep, setActiveStep] = useState<RecommendationStepId>('intro');
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [history, setHistory] = useState<ViewerHistory>(DEFAULT_HISTORY);
@@ -34,32 +37,19 @@ export function useRecommendationFlow() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [moviesStatus, setMoviesStatus] = useState<RequestStatus>('idle');
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recommendations, setRecommendations] = useState<SessionRecommendation[]>([]);
   const [recommendationsStatus, setRecommendationsStatus] = useState<RequestStatus>('idle');
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadGenreOptions();
-  }, []);
-
-  useEffect(() => {
-    const storedSession = loadStoredSession();
-
-    if (!storedSession) {
+    if (didRestoreCurrentSession.current) {
       return;
     }
 
-    const activeRound = storedSession.rounds[0] ?? null;
-
-    setPreferences(storedSession.preferences);
-    setHistory(storedSession.history);
-    setRecommendationRounds(storedSession.rounds);
-    setSessionId(activeRound?.sessionId ?? null);
-    setRecommendations(activeRound?.recommendations ?? []);
-    setRecommendationsStatus(activeRound ? 'success' : 'idle');
-    setHasStoredSession(true);
-    setActiveStep('recommendations');
+    didRestoreCurrentSession.current = true;
+    window.localStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
+    loadGenreOptions();
+    void restoreCurrentSession();
   }, []);
 
   const watchedMovies = useMemo(
@@ -78,6 +68,25 @@ export function useRecommendationFlow() {
       .catch(() => {
         setGenreOptionsStatus('error');
       });
+  }
+
+  async function restoreCurrentSession() {
+    try {
+      const currentSession = await fetchCurrentSession();
+
+      applyProfile(currentSession.profile);
+      setRecommendationRounds(currentSession.rounds.map(toRecommendationRound));
+
+      if (!currentSession.session) {
+        return;
+      }
+
+      applySession(currentSession.session, currentSession.recommendations);
+      setHasStoredSession(true);
+      setActiveStep('recommendations');
+    } catch {
+      // A primeira visita continua utilizável mesmo quando a restauração falha.
+    }
   }
 
   function loadMovies(filter: { genres: string[]; runtime: RuntimePreference; limit: number }) {
@@ -105,10 +114,10 @@ export function useRecommendationFlow() {
   function startNewRound() {
     setPreferences(DEFAULT_PREFERENCES);
     setHistory(DEFAULT_HISTORY);
-    setSessionId(null);
     setRecommendations([]);
     setRecommendationsStatus('idle');
     setRecommendationsError(null);
+    setHasStoredSession(false);
     setActiveStep('preferences');
   }
 
@@ -117,64 +126,58 @@ export function useRecommendationFlow() {
     setRecommendationsError(null);
 
     try {
-      const session = await createRecommendationSession({ preferences, history });
-      const fetchedRecommendations = await fetchSessionRecommendations(session.id);
-      const nextRound = buildRecommendationRound(session, fetchedRecommendations);
-      const nextRounds = [nextRound, ...recommendationRounds];
+      const currentSession = await createRecommendationSession({ preferences, history });
+      const session = currentSession.session;
 
-      setSessionId(session.id);
-      setRecommendations(fetchedRecommendations);
-      setRecommendationRounds(nextRounds);
-      setRecommendationsStatus('success');
+      if (!session) {
+        throw new Error('Nao foi possivel iniciar uma nova rodada.');
+      }
+
+      applySession(session, currentSession.recommendations);
+      setRecommendationRounds((rounds) => [
+        buildRecommendationRound(session, currentSession.recommendations),
+        ...rounds,
+      ]);
       setHasStoredSession(true);
       setActiveStep('recommendations');
-      saveStoredSession({ preferences: nextRound.preferences, history: nextRound.history, rounds: nextRounds });
     } catch (error) {
       setRecommendationsStatus('error');
       setRecommendationsError(resolveErrorMessage(error));
     }
   }
 
-  async function setRecommendationFeedback(movieId: string, opinion: 'liked' | 'disliked') {
-    if (!sessionId) {
-      return;
-    }
-
+  async function setRecommendationFeedback(impressionId: string, opinion: 'liked' | 'disliked') {
     setRecommendationsStatus('loading');
     setRecommendationsError(null);
 
     try {
-      const session = await sendSessionFeedback(sessionId, { movieId, feedback: opinion });
-      const fetchedRecommendations = await fetchSessionRecommendations(sessionId);
+      const currentSession = await sendSessionFeedback({ impressionId, feedback: opinion });
 
-      setHistory(session.history);
-      setRecommendations(fetchedRecommendations);
-      setRecommendationsStatus('success');
-      updateActiveRound(session, fetchedRecommendations);
+      applySession(currentSession.session, currentSession.recommendations);
+      updateActiveRound(currentSession.session, currentSession.recommendations);
     } catch (error) {
       setRecommendationsStatus('error');
       setRecommendationsError(resolveErrorMessage(error));
     }
   }
 
-  function updateActiveRound(session: Session, fetchedRecommendations: Recommendation[]) {
-    setRecommendationRounds((currentRounds) => {
-      const [activeRound, ...otherRounds] = currentRounds;
+  function applySession(session: Session, nextRecommendations: SessionRecommendation[]) {
+    applyProfile(session);
+    setRecommendations(nextRecommendations);
+    setRecommendationsStatus('success');
+  }
 
-      if (!activeRound) {
-        return currentRounds;
-      }
+  function applyProfile(profile: Pick<Session, 'preferences' | 'history'>) {
+    setPreferences(profile.preferences);
+    setHistory(profile.history);
+  }
 
-      const updatedRound: RecommendationRound = {
-        ...activeRound,
-        history: cloneHistory(session.history),
-        recommendations: fetchedRecommendations,
-      };
-      const nextRounds = [updatedRound, ...otherRounds];
+  function updateActiveRound(session: Session, nextRecommendations: SessionRecommendation[]) {
+    setRecommendationRounds((rounds) => {
+      const [activeRound, ...otherRounds] = rounds;
+      const updatedRound = buildRecommendationRound(session, nextRecommendations);
 
-      saveStoredSession({ preferences: updatedRound.preferences, history: updatedRound.history, rounds: nextRounds });
-
-      return nextRounds;
+      return activeRound ? [{ ...activeRound, ...updatedRound }, ...otherRounds] : [updatedRound];
     });
   }
 
@@ -245,14 +248,22 @@ function updateOpinionList(movieIds: string[], movieId: string, shouldInclude: b
   return Array.from(new Set([...movieIds, movieId]));
 }
 
-function buildRecommendationRound(session: Session, recommendations: Recommendation[]): RecommendationRound {
-  return {
-    id: `round-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+function buildRecommendationRound(session: Session, recommendations: SessionRecommendation[]): RecommendationRound {
+  return toRecommendationRound({
     createdAt: session.createdAt,
-    sessionId: session.id,
-    preferences: clonePreferences(session.preferences),
-    history: cloneHistory(session.history),
-    recommendations: recommendations.map(cloneRecommendation),
+    history: session.history,
+    preferences: session.preferences,
+    recommendations,
+  });
+}
+
+function toRecommendationRound(round: StoredRecommendationRound): RecommendationRound {
+  return {
+    id: `round-${round.createdAt}`,
+    createdAt: round.createdAt,
+    preferences: clonePreferences(round.preferences),
+    history: cloneHistory(round.history),
+    recommendations: round.recommendations.map(cloneRecommendation),
   };
 }
 

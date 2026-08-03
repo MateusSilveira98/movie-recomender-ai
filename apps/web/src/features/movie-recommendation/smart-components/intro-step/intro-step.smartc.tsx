@@ -12,16 +12,14 @@ export function IntroStep({ hasStoredSession, onAdvance, onResume }: IntroStepPr
             lista fica pronta e melhora nas proximas rodadas.
           </Typography>
           {hasStoredSession && (
-            <Chip color="primary" label="Existe uma rodada salva neste navegador" sx={{ alignSelf: 'flex-start' }} />
+            <Chip color="primary" label="Existe uma rodada ativa neste navegador" sx={{ alignSelf: 'flex-start' }} />
           )}
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <Button variant="contained" size="large" onClick={onAdvance}>
               Avancar
             </Button>
             {hasStoredSession && (
-              <Button variant="outlined" size="large" onClick={onResume}>
-                Ver recomendacoes salvas
-              </Button>
+              <Button variant="outlined" size="large" onClick={onResume}>Ver recomendacoes da rodada atual</Button>
             )}
           </Stack>
         </Stack>

@@ -1,11 +1,11 @@
 import express from 'express';
 import { createListGenresController, createListMoviesController } from '../controllers/movies.controller.js';
-import { createInMemoryMovieCatalogRepository } from '../repositories/movies.repository.js';
+import type { MovieCatalogRepository } from '../repositories/movies.repository.js';
 import { createMoviesService } from '../services/movies.service.js';
 
-export function createMoviesRoutes(): express.Router {
+export function createMoviesRoutes(movieCatalogRepository: MovieCatalogRepository): express.Router {
   const router = express.Router();
-  const moviesService = createMoviesService(createInMemoryMovieCatalogRepository());
+  const moviesService = createMoviesService(movieCatalogRepository);
 
   router.get('/movies', createListMoviesController(moviesService));
   router.get('/genres', createListGenresController(moviesService));
