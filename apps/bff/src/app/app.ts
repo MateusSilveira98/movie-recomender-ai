@@ -1,31 +1,48 @@
 import cors from 'cors';
 import express from 'express';
+import type { Client } from '@libsql/client';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
 import { getTrainingPipelineStatus } from '@pkg/ml';
 import { createDatasetImportQueue, getDemoRecommendations } from '@pkg/recommender';
 import { createSessionProfile } from '@pkg/shared/data-access/factories/session-profile.factory';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
+import { createSqlMovieCatalogRepository } from '../domains/movies/repositories/movies.repository.js';
 import { createSqlSessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
 import { createRequestLogger, requestErrorHandler } from '../middlewares/request-logger.middleware.js';
 import { createAppRouter } from './routes.js';
+import { isAllowedWebOrigin } from './web-origin.js';
 
-const LOCAL_WEB_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/;
+interface AppDependencies {
+  databaseClient?: Client;
+  processDatasetQueue?: boolean;
+}
 
-export function createApp(): express.Express {
+export function createApp({ databaseClient = createDatabaseClient(), processDatasetQueue = true }: AppDependencies = {}): express.Express {
   const app = express();
-  const databaseClient = createDatabaseClient();
   const datasetImportQueue = createDatasetImportQueue(databaseClient);
+  const movieCatalogRepository = createSqlMovieCatalogRepository(databaseClient);
   const sessionRepository = createSqlSessionRepository(databaseClient);
 
+  app.use((request, response, next) => {
+    const origin = request.get('origin');
+
+    if (origin && !isAllowedWebOrigin(origin)) {
+      response.status(403).json({ error: 'Origem nao autorizada.' });
+      return;
+    }
+
+    next();
+  });
   app.use(
     cors({
+      credentials: true,
       origin(origin, callback) {
         if (!origin || isAllowedWebOrigin(origin)) {
           callback(null, true);
           return;
         }
 
-        callback(new Error(`CORS bloqueado para a origem ${origin}.`));
+        callback(null, false);
       },
     }),
   );
@@ -54,23 +71,13 @@ export function createApp(): express.Express {
     });
   });
 
-  app.use(createAppRouter({ datasetImportQueue, sessionRepository }));
+  app.use(createAppRouter({ datasetImportQueue, movieCatalogRepository, sessionRepository }));
   app.use(requestErrorHandler);
 
-  void datasetImportQueue.processPending();
+  if (processDatasetQueue) {
+    void datasetImportQueue.processPending();
+  }
+  void sessionRepository.cleanupExpired(Date.now());
 
   return app;
-}
-
-function isAllowedWebOrigin(origin: string): boolean {
-  const configuredOrigins = (process.env.WEB_ORIGIN ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-
-  if (configuredOrigins.includes(origin)) {
-    return true;
-  }
-
-  return LOCAL_WEB_ORIGIN_PATTERN.test(origin);
 }

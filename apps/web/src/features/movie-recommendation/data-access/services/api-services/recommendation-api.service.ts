@@ -1,10 +1,41 @@
-import type { CreateSessionRequest } from '@pkg/shared/entities/models/create-session-request.model';
 import type { Movie } from '@pkg/shared/entities/models/movie.model';
-import type { Recommendation } from '@pkg/shared/entities/models/recommendation.model';
+import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
+import type { RecommendationRound } from '@pkg/shared/entities/models/recommendation-round.model';
 import type { Session } from '@pkg/shared/entities/models/session.model';
-import type { SessionFeedbackRequest } from '@pkg/shared/entities/models/session-feedback-request.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
 import type { RuntimePreference } from '@pkg/shared/entities/types/runtime-preference.type';
 import { API_BASE_URL } from '../../../entities/consts/api-base-url.const';
+import type { SessionRecommendation } from '../../../entities/models/session-recommendation.model';
+
+let csrfToken: string | null = null;
+let csrfTokenRequest: Promise<void> | null = null;
+
+export type { SessionRecommendation } from '../../../entities/models/session-recommendation.model';
+
+export interface AnonymousProfileResponse {
+  preferences: Preferences;
+  history: ViewerHistory;
+}
+
+export interface SessionStateResponse {
+  profile: AnonymousProfileResponse;
+  session: Session | null;
+  recommendations: SessionRecommendation[];
+  csrfToken: string;
+}
+
+export interface CurrentSessionResponse extends SessionStateResponse {
+  rounds: RecommendationRound[];
+}
+
+interface RecommendationsResponse {
+  recommendations: SessionRecommendation[];
+  csrfToken?: string;
+}
+
+interface FeedbackResponse extends RecommendationsResponse {
+  session: Session;
+}
 
 export interface MovieCatalogFilter {
   genres: string[];
@@ -40,42 +71,92 @@ function buildMovieQuery(filter?: MovieCatalogFilter): string {
   return `?${params.toString()}`;
 }
 
-export async function createRecommendationSession(request: CreateSessionRequest): Promise<Session> {
-  const body = await requestJson<{ session: Session }>('/sessions', {
+export function fetchCurrentSession(): Promise<CurrentSessionResponse> {
+  return requestJson<CurrentSessionResponse>('/sessions/current');
+}
+
+export async function createRecommendationSession(
+  request: { preferences: Preferences; history?: ViewerHistory },
+): Promise<SessionStateResponse> {
+  return requestJson<SessionStateResponse>('/sessions', {
     method: 'POST',
     body: JSON.stringify(request),
   });
-  return body.session;
 }
 
-export async function fetchSessionRecommendations(sessionId: string): Promise<Recommendation[]> {
-  const body = await requestJson<{ recommendations: Recommendation[] }>(
-    `/sessions/${sessionId}/recommendations`,
-    { method: 'POST' },
-  );
+export async function fetchSessionRecommendations(): Promise<SessionRecommendation[]> {
+  const body = await requestJson<RecommendationsResponse>('/sessions/recommendations', { method: 'POST' });
   return body.recommendations;
 }
 
-export async function sendSessionFeedback(sessionId: string, request: SessionFeedbackRequest): Promise<Session> {
-  const body = await requestJson<{ session: Session }>(`/sessions/${sessionId}/feedback`, {
+export function sendSessionFeedback(request: { impressionId: string; feedback: 'liked' | 'disliked' }): Promise<FeedbackResponse> {
+  return requestJson<FeedbackResponse>('/sessions/feedback', {
     method: 'POST',
     body: JSON.stringify(request),
   });
-  return body.session;
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = init?.method?.toUpperCase() ?? 'GET';
+
+  if (method !== 'GET' && !csrfToken) {
+    await ensureCsrfToken();
+  }
+
+  const headers = new Headers(init?.headers);
+
+  if (init?.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (method !== 'GET' && csrfToken) {
+    headers.set('X-CSRF-Token', csrfToken);
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    credentials: 'include',
+    headers,
   });
   const responseBody = await parseJsonSafely(response);
+
+  updateCsrfToken(responseBody);
 
   if (!response.ok) {
     throw new Error(resolveErrorMessage(responseBody, path));
   }
 
   return responseBody as T;
+}
+
+async function ensureCsrfToken(): Promise<void> {
+  if (csrfToken) {
+    return;
+  }
+
+  csrfTokenRequest ??= fetchCurrentSession()
+    .then(() => undefined)
+    .finally(() => {
+      csrfTokenRequest = null;
+    });
+
+  await csrfTokenRequest;
+
+  if (!csrfToken) {
+    throw new Error('Nao foi possivel iniciar a sessao segura. Atualize a pagina e tente novamente.');
+  }
+}
+
+function updateCsrfToken(body: unknown): void {
+  if (typeof body !== 'object' || body === null) {
+    return;
+  }
+
+  const token = (body as { csrfToken?: unknown }).csrfToken;
+
+  if (typeof token === 'string' && token.length > 0) {
+    csrfToken = token;
+  }
 }
 
 async function parseJsonSafely(response: Response): Promise<unknown> {

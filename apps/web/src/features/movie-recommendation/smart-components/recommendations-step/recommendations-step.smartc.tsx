@@ -145,7 +145,7 @@ function RecommendationsList({
               </Stack>
               <ToggleButtonGroup exclusive size="small" onChange={(_, value: 'liked' | 'disliked' | null) => {
                 if (value) {
-                  onFeedback(movie.id, value);
+                  onFeedback(movie.impressionId, value);
                 }
               }}>
                 <ToggleButton value="liked" aria-label={`Gostei de ${movie.title}`}>
@@ -178,8 +178,11 @@ function RecommendationRoundsHistory({ rounds }: Pick<RecommendationsStepProps, 
 
   return (
     <Stack spacing={2}>
-      {rounds.map((round, index) => (
-        <Card key={round.id} variant="outlined">
+      {rounds.map((round, index) => {
+        const movieTitles = Object.fromEntries(round.recommendations.map((movie) => [movie.id, movie.title]));
+
+        return (
+          <Card key={round.id} variant="outlined">
           <CardContent>
             <Stack spacing={3}>
               <Stack
@@ -218,14 +221,15 @@ function RecommendationRoundsHistory({ rounds }: Pick<RecommendationsStepProps, 
 
               <Stack spacing={2}>
                 <Typography variant="subtitle2">Sinais usados</Typography>
-                <HistoryLine label="Visualizados" movieIds={round.history.watched} />
-                <HistoryLine label="Gostei" movieIds={round.history.liked} />
-                <HistoryLine label="Nao gostei" movieIds={round.history.disliked} />
+                <HistoryLine label="Visualizados" movieIds={round.history.watched} movieTitles={movieTitles} />
+                <HistoryLine label="Gostei" movieIds={round.history.liked} movieTitles={movieTitles} />
+                <HistoryLine label="Nao gostei" movieIds={round.history.disliked} movieTitles={movieTitles} />
               </Stack>
             </Stack>
           </CardContent>
-        </Card>
-      ))}
+          </Card>
+        );
+      })}
     </Stack>
   );
 }

@@ -1,9 +1,10 @@
 import type { RequestHandler } from 'express';
+import { createAsyncHandler } from '../../../middlewares/request-logger.middleware.js';
 import type { MoviesService } from '../services/movies.service.js';
 import { validateMovieQuery } from '../validators/movies.validator.js';
 
 export function createListMoviesController(moviesService: MoviesService): RequestHandler {
-  return (request, response) => {
+  return createAsyncHandler(async (request, response) => {
     const validation = validateMovieQuery(request.query);
 
     if (!validation.valid) {
@@ -11,12 +12,12 @@ export function createListMoviesController(moviesService: MoviesService): Reques
       return;
     }
 
-    response.json({ movies: moviesService.listByFilter(validation.data) });
-  };
+    response.json({ movies: await moviesService.listByFilter(validation.data) });
+  });
 }
 
 export function createListGenresController(moviesService: MoviesService): RequestHandler {
-  return (_request, response) => {
-    response.json({ genres: moviesService.listGenres() });
-  };
+  return createAsyncHandler(async (_request, response) => {
+    response.json({ genres: await moviesService.listGenres() });
+  });
 }

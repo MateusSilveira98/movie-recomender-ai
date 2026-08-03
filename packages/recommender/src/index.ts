@@ -10,16 +10,20 @@ import { MOVIE_CATALOG_MOCK } from '@pkg/shared/mocks/movie';
 export { createDatasetImportQueue, type DatasetImportQueue } from './workers/dataset/application/dataset-import-queue.service.js';
 export { DATASET_FILE_TYPES, type DatasetFileType, type DatasetImportJob, type DatasetUpload } from './workers/dataset/domain/dataset-import-queue.types.js';
 
-export function getRecommendations(preferences: Preferences, history: ViewerHistory): Recommendation[] {
-  return MOVIE_CATALOG_MOCK
-    .filter((movie) => !history.watched.includes(movie.id))
-    .map((movie) => buildRecommendation(movie, preferences, history))
-    .sort((first, second) => second.score - first.score)
+export function getRecommendations(catalog: Movie[], preferences: Preferences, history: ViewerHistory): Recommendation[] {
+  const watchedMovieIds = new Set(history.watched);
+  const moviesById = new Map(catalog.map((movie) => [movie.id, movie]));
+
+  return catalog
+    .filter((movie) => !movie.adult && !watchedMovieIds.has(movie.id))
+    .map((movie) => buildRecommendation(movie, preferences, history, moviesById))
+    .sort(compareRecommendations)
     .slice(0, 4);
 }
 
 export function getDemoRecommendations(profile: SessionProfile): Recommendation[] {
   return getRecommendations(
+    MOVIE_CATALOG_MOCK,
     {
       freeText: '',
       genres: profile.genres,
@@ -33,13 +37,18 @@ export function getDemoRecommendations(profile: SessionProfile): Recommendation[
   );
 }
 
-function buildRecommendation(movie: Movie, preferences: Preferences, history: ViewerHistory): Recommendation {
+function buildRecommendation(
+  movie: Movie,
+  preferences: Preferences,
+  history: ViewerHistory,
+  moviesById: Map<string, Movie>,
+): Recommendation {
   const genreMatches = movie.genres.filter((genre) => preferences.genres.includes(genre));
   const score =
     genreMatches.length * 2 +
     getRuntimeScore(movie, preferences) +
-    getHistoryGenreScore(movie, history.liked) -
-    getHistoryGenreScore(movie, history.disliked);
+    getHistoryGenreScore(movie, history.liked, moviesById) -
+    getHistoryGenreScore(movie, history.disliked, moviesById);
 
   return {
     ...movie,
@@ -56,13 +65,39 @@ function getRuntimeScore(movie: Movie, preferences: Preferences): number {
   return matchesRuntimePreference(movie.runtime, preferences.runtime) ? 1 : -1;
 }
 
-function getHistoryGenreScore(movie: Movie, movieIds: string[]): number {
+function getHistoryGenreScore(movie: Movie, movieIds: string[], moviesById: Map<string, Movie>): number {
   return movieIds.reduce((score, movieId) => {
-    const watchedMovie = MOVIE_CATALOG_MOCK.find((item) => item.id === movieId);
+    const watchedMovie = moviesById.get(movieId);
     const hasGenreMatch = watchedMovie?.genres.some((genre) => movie.genres.includes(genre));
 
     return score + (hasGenreMatch ? 1 : 0);
   }, 0);
+}
+
+function compareRecommendations(first: Recommendation, second: Recommendation): number {
+  const scoreDifference = second.score - first.score;
+
+  if (scoreDifference !== 0) {
+    return scoreDifference;
+  }
+
+  const popularityDifference = second.popularity - first.popularity;
+
+  if (popularityDifference !== 0) {
+    return popularityDifference;
+  }
+
+  const voteCountDifference = second.voteCount - first.voteCount;
+
+  if (voteCountDifference !== 0) {
+    return voteCountDifference;
+  }
+
+  if (first.id === second.id) {
+    return 0;
+  }
+
+  return first.id < second.id ? -1 : 1;
 }
 
 function buildReason(movie: Movie, genreMatches: string[], preferences: Preferences, history: ViewerHistory): string {

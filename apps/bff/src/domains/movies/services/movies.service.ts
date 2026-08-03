@@ -4,14 +4,15 @@ import type { MovieFilter } from '../entities/movie-filter.entity.js';
 import type { MovieCatalogRepository } from '../repositories/movies.repository.js';
 
 export interface MoviesService {
-  listByFilter(filter: MovieFilter): Movie[];
-  listGenres(): string[];
+  listByFilter(filter: MovieFilter): Promise<Movie[]>;
+  listGenres(): Promise<string[]>;
 }
 
 export function createMoviesService(movieCatalogRepository: MovieCatalogRepository): MoviesService {
   return {
-    listByFilter(filter) {
-      const candidates = movieCatalogRepository.list().filter(
+    async listByFilter(filter) {
+      const catalog = await movieCatalogRepository.list();
+      const candidates = catalog.filter(
         (movie) =>
           !movie.adult &&
           matchesGenres(movie, filter.genres) &&
@@ -20,8 +21,10 @@ export function createMoviesService(movieCatalogRepository: MovieCatalogReposito
 
       return sortByCandidateScore(candidates).slice(0, filter.limit);
     },
-    listGenres() {
-      return Array.from(new Set(movieCatalogRepository.list().flatMap((movie) => movie.genres))).sort((first, second) =>
+    async listGenres() {
+      const catalog = await movieCatalogRepository.list();
+
+      return Array.from(new Set(catalog.flatMap((movie) => movie.genres))).sort((first, second) =>
         first.localeCompare(second),
       );
     },
