@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Movie } from '@pkg/shared/entities/models/movie.model';
-import { getRecommendations } from './index.js';
+import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
+import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
+import { getRecommendations, rankRecommendations } from './index.js';
 
 describe('getRecommendations', () => {
   it('deve calcular recomendacoes a partir do catalogo informado', () => {
@@ -62,6 +64,111 @@ describe('getRecommendations', () => {
       recommendations.map((recommendation) => recommendation.id),
       ['beta', 'zeta', 'alfa', 'gamma'],
     );
+  });
+
+  it('deve combinar score normalizado do modelo com regras explicáveis', () => {
+    const ranking = rankRecommendations(
+      [
+        movie({ id: 'popular', popularity: 100, voteCount: 100 }),
+        movie({ id: 'modelo', popularity: 1, voteCount: 1 }),
+      ],
+      { freeText: '', genres: [], runtime: 'any' },
+      { watched: [], liked: [], disliked: [] },
+      {
+        modelScoreProvider: {
+          getScores() {
+            return {
+              modelVersion: 'quality-v1',
+              scores: new Map([
+                ['modelo', 1],
+                ['popular', 0],
+              ]),
+            };
+          },
+        },
+      },
+    );
+
+    assert.equal(ranking.recommendations[0]?.id, 'modelo');
+    assert.equal(ranking.modelVersion, 'quality-v1');
+    assert.match(ranking.recommendations[0]?.reason ?? '', /boa avaliacao estimada pelo modelo/);
+  });
+
+  it('deve enviar somente candidatos elegíveis para o modelo', () => {
+    const receivedMovieIds: string[] = [];
+
+    rankRecommendations(
+      [
+        movie({ id: 'adulto', adult: true }),
+        movie({ id: 'assistido' }),
+        movie({ id: 'bloqueado' }),
+        movie({ id: 'curtido' }),
+        movie({ id: 'elegivel' }),
+      ],
+      { freeText: '', genres: [], runtime: 'any' },
+      { watched: ['assistido'], liked: ['curtido'], disliked: ['bloqueado'] },
+      {
+        modelScoreProvider: {
+          getScores(movies) {
+            receivedMovieIds.push(...movies.map((movie) => movie.id));
+            return { scores: new Map(movies.map((movie) => [movie.id, 0.5])) };
+          },
+        },
+      },
+    );
+
+    assert.deepEqual(receivedMovieIds, ['elegivel']);
+  });
+
+  it('deve usar a heurística quando o provider do modelo falhar', () => {
+    const catalog = [
+      movie({ id: 'primeiro', popularity: 20, voteCount: 20 }),
+      movie({ id: 'segundo', popularity: 10, voteCount: 10 }),
+    ];
+    const preferences: Preferences = { freeText: '', genres: [], runtime: 'any' };
+    const history: ViewerHistory = { watched: [], liked: [], disliked: [] };
+    const fallback = rankRecommendations(catalog, preferences, history);
+    const ranking = rankRecommendations(catalog, preferences, history, {
+      modelScoreProvider: {
+        getScores() {
+          throw new Error('modelo indisponível');
+        },
+      },
+    });
+
+    assert.deepEqual(ranking, fallback);
+  });
+
+  it('deve usar a heurística quando o lote do modelo tiver score inválido', () => {
+    const catalog = [
+      movie({ id: 'primeiro', popularity: 20, voteCount: 20 }),
+      movie({ id: 'segundo', popularity: 10, voteCount: 10 }),
+    ];
+    const preferences: Preferences = { freeText: '', genres: [], runtime: 'any' };
+    const history: ViewerHistory = { watched: [], liked: [], disliked: [] };
+    const fallback = rankRecommendations(catalog, preferences, history);
+    const ranking = rankRecommendations(catalog, preferences, history, {
+      modelScoreProvider: {
+        getScores() {
+          return { modelVersion: 'invalid-v1', scores: new Map([['primeiro', Number.NaN]]) };
+        },
+      },
+    });
+
+    assert.deepEqual(ranking, fallback);
+  });
+
+  it('deve manter preferências de gênero e duração no cold start', () => {
+    const recommendations = getRecommendations(
+      [
+        movie({ id: 'preferido', genres: ['Ficcao'], popularity: 1, runtime: 100, voteCount: 1 }),
+        movie({ id: 'popular', genres: ['Drama'], popularity: 100, runtime: 160, voteCount: 100 }),
+      ],
+      { freeText: '', genres: ['Ficcao'], runtime: 'medium' },
+      { watched: [], liked: [], disliked: [] },
+    );
+
+    assert.equal(recommendations[0]?.id, 'preferido');
   });
 });
 
