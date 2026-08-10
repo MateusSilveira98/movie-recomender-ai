@@ -1,5 +1,5 @@
 import express from 'express';
-import type { DatasetImportQueue } from '@pkg/recommender';
+import type { DatasetImportQueue, RecommendationRanker } from '@pkg/recommender';
 import { createDatasetImportsRoutes } from '../domains/dataset-imports/routes/dataset-imports.routes.js';
 import { createMoviesRoutes } from '../domains/movies/routes/movies.routes.js';
 import type { MovieCatalogRepository } from '../domains/movies/repositories/movies.repository.js';
@@ -9,14 +9,20 @@ import type { SessionRepository } from '../domains/sessions/repositories/session
 interface AppRouterDependencies {
   datasetImportQueue: DatasetImportQueue;
   movieCatalogRepository: MovieCatalogRepository;
+  recommendationRanker: RecommendationRanker;
   sessionRepository: SessionRepository;
 }
 
-export function createAppRouter({ datasetImportQueue, movieCatalogRepository, sessionRepository }: AppRouterDependencies): express.Router {
+export function createAppRouter({
+  datasetImportQueue,
+  movieCatalogRepository,
+  recommendationRanker,
+  sessionRepository,
+}: AppRouterDependencies): express.Router {
   const router = express.Router();
 
   router.use(createMoviesRoutes(movieCatalogRepository));
-  router.use(createSessionsRoutes({ movieCatalogRepository, sessionRepository }));
+  router.use(createSessionsRoutes({ movieCatalogRepository, recommendationRanker, sessionRepository }));
   router.use(createDatasetImportsRoutes(datasetImportQueue));
 
   return router;

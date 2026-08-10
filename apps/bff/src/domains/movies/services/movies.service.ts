@@ -11,7 +11,7 @@ export interface MoviesService {
 export function createMoviesService(movieCatalogRepository: MovieCatalogRepository): MoviesService {
   return {
     async listByFilter(filter) {
-      const catalog = await movieCatalogRepository.list();
+      const catalog = await movieCatalogRepository.listRankingCandidates();
       const candidates = catalog.filter(
         (movie) =>
           !movie.adult &&
@@ -19,14 +19,10 @@ export function createMoviesService(movieCatalogRepository: MovieCatalogReposito
           matchesRuntimePreference(movie.runtime, filter.runtime),
       );
 
-      return sortByCandidateScore(candidates).slice(0, filter.limit);
+      return movieCatalogRepository.findByIds(sortByCandidateScore(candidates).slice(0, filter.limit).map((movie) => movie.id));
     },
     async listGenres() {
-      const catalog = await movieCatalogRepository.list();
-
-      return Array.from(new Set(catalog.flatMap((movie) => movie.genres))).sort((first, second) =>
-        first.localeCompare(second),
-      );
+      return movieCatalogRepository.listGenres();
     },
   };
 }

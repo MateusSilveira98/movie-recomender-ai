@@ -15,7 +15,7 @@
       "command": "tsc -p apps/bff/tsconfig.json --noEmit"
     },
     "test": {
-      "command": "tsx --tsconfig tsconfig.base.json --test apps/bff/src/app/app.spec.ts apps/bff/src/domains/sessions/repositories/sessions.repository.spec.ts apps/bff/src/domains/sessions/services/session-feedback.service.spec.ts"
+      "command": "tsx --tsconfig tsconfig.base.json --test apps/bff/src/app/app.spec.ts apps/bff/src/domains/movies/repositories/movies.repository.spec.ts apps/bff/src/domains/sessions/repositories/sessions.repository.spec.ts apps/bff/src/domains/sessions/services/session-feedback.service.spec.ts"
     }
   }
 }

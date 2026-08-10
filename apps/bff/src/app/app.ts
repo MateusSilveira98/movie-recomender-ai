@@ -2,8 +2,8 @@ import cors from 'cors';
 import express from 'express';
 import type { Client } from '@libsql/client';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
-import { getTrainingPipelineStatus } from '@pkg/ml';
-import { createDatasetImportQueue, getDemoRecommendations } from '@pkg/recommender';
+import { getTrainingPipelineStatus, type ModelRuntimeStatus } from '@pkg/ml';
+import { createDatasetImportQueue, createRecommendationRanker, getDemoRecommendations, type RecommendationRanker } from '@pkg/recommender';
 import { createSessionProfile } from '@pkg/shared/data-access/factories/session-profile.factory';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
 import { createSqlMovieCatalogRepository } from '../domains/movies/repositories/movies.repository.js';
@@ -14,10 +14,17 @@ import { isAllowedWebOrigin } from './web-origin.js';
 
 interface AppDependencies {
   databaseClient?: Client;
+  mlStatus?: ModelRuntimeStatus;
   processDatasetQueue?: boolean;
+  recommendationRanker?: RecommendationRanker;
 }
 
-export function createApp({ databaseClient = createDatabaseClient(), processDatasetQueue = true }: AppDependencies = {}): express.Express {
+export function createApp({
+  databaseClient = createDatabaseClient(),
+  mlStatus = getTrainingPipelineStatus(),
+  processDatasetQueue = true,
+  recommendationRanker = createRecommendationRanker(),
+}: AppDependencies = {}): express.Express {
   const app = express();
   const datasetImportQueue = createDatasetImportQueue(databaseClient);
   const movieCatalogRepository = createSqlMovieCatalogRepository(databaseClient);
@@ -54,7 +61,7 @@ export function createApp({ databaseClient = createDatabaseClient(), processData
       status: 'ok',
       message: getHealthMessage('bff'),
       database: await getDatabaseHealth(),
-      ml: getTrainingPipelineStatus(),
+      ml: mlStatus,
     });
   });
 
@@ -71,7 +78,7 @@ export function createApp({ databaseClient = createDatabaseClient(), processData
     });
   });
 
-  app.use(createAppRouter({ datasetImportQueue, movieCatalogRepository, sessionRepository }));
+  app.use(createAppRouter({ datasetImportQueue, movieCatalogRepository, recommendationRanker, sessionRepository }));
   app.use(requestErrorHandler);
 
   if (processDatasetQueue) {

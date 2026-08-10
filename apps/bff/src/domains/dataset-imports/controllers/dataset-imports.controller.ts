@@ -44,10 +44,54 @@ export function createGetDatasetUploadController(datasetImportQueue: DatasetImpo
   };
 }
 
+export function createListDatasetImportDiagnosticsController(datasetImportQueue: DatasetImportQueue): RequestHandler {
+  return async (request, response) => {
+    const pagination = parseDiagnosticsPagination(request.query);
+
+    if (!pagination) {
+      response.status(400).json({ error: 'Os parametros limit e offset devem ser inteiros validos. limit deve estar entre 1 e 100.' });
+      return;
+    }
+
+    const page = await datasetImportQueue.listDiagnostics(request.params.uploadId, pagination);
+
+    if (!page) {
+      response.status(404).json({ error: `Upload ${request.params.uploadId} nao encontrado.` });
+      return;
+    }
+
+    response.json(page);
+  };
+}
+
 export function createListDatasetImportJobsController(datasetImportQueue: DatasetImportQueue): RequestHandler {
   return async (_request, response) => response.json({ jobs: await datasetImportQueue.listJobs() });
 }
 
 function isDatasetFileType(value: unknown): value is (typeof DATASET_FILE_TYPES)[number] {
   return typeof value === 'string' && DATASET_FILE_TYPES.some((type) => type === value);
+}
+
+function parseDiagnosticsPagination(query: Record<string, unknown>): { limit: number; offset: number } | null {
+  const limit = parseIntegerQuery(query.limit, 50);
+  const offset = parseIntegerQuery(query.offset, 0);
+
+  if (limit === null || offset === null || limit < 1 || limit > 100 || offset < 0) {
+    return null;
+  }
+
+  return { limit, offset };
+}
+
+function parseIntegerQuery(value: unknown, fallback: number): number | null {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
