@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { Movie } from '@pkg/shared/entities/models/movie.model';
 import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
 import type { ViewerHistory } from '@pkg/shared/entities/models/viewer-history.model';
-import { getRecommendations, rankRecommendations } from './index.js';
+import { createRecommendationRanker, getRecommendations, rankRecommendations } from './index.js';
 
 describe('getRecommendations', () => {
   it('deve calcular recomendacoes a partir do catalogo informado', () => {
@@ -169,6 +169,34 @@ describe('getRecommendations', () => {
     );
 
     assert.equal(recommendations[0]?.id, 'preferido');
+  });
+
+  it('deve aplicar a política versionada injetada no ranker', () => {
+    const ranking = createRecommendationRanker({
+      policy: {
+        modelScoreReasonThreshold: 0.5,
+        recommendationLimit: 1,
+        version: 'hybrid-test-v2',
+        weights: {
+          dislikedGenreMatch: -1,
+          likedGenreMatch: 1,
+          modelScore: 0,
+          preferenceGenreMatch: 0,
+          runtimeMatch: 1,
+          runtimeMismatch: -1,
+        },
+      },
+    }).rank(
+      [
+        movie({ id: 'longo', popularity: 1, runtime: 150 }),
+        movie({ id: 'curto', popularity: 100, runtime: 80 }),
+      ],
+      { freeText: '', genres: [], runtime: 'long' },
+      { watched: [], liked: [], disliked: [] },
+    );
+
+    assert.equal(ranking.rankingVersion, 'hybrid-test-v2');
+    assert.deepEqual(ranking.recommendations.map((recommendation) => recommendation.id), ['longo']);
   });
 });
 
