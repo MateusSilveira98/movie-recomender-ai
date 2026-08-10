@@ -65,10 +65,13 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
     waitForDependencies: (job, dependencies) => waitForDatasetDependencies(client, job, dependencies),
   };
 
-  async function validateFileStructure(type: DatasetFileType, filePath: string) {
-    const issues = [];
+  async function validateFileStructure(
+    type: DatasetFileType,
+    filePath: string,
+    diagnostics: DatasetImportDiagnosticsCollector,
+  ): Promise<boolean> {
     if (!await hasValidUtf8Encoding(filePath)) {
-      issues.push(createDatasetDiagnostic({ lineEnd: null, lineStart: null }, {
+      await diagnostics.record(createDatasetDiagnostic({ lineEnd: null, lineStart: null }, {
         category: 'structure',
         field: null,
         message: 'O arquivo deve usar codificacao UTF-8 valida.',
@@ -76,25 +79,29 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
         ruleCode: 'utf8_encoding',
         value: null,
       }));
-      return issues;
+      return false;
     }
 
     const header = await readCsvHeader(filePath);
     const headerIssues = validateDatasetHeaders(type, header);
 
     if (headerIssues.length > 0) {
-      return headerIssues;
+      await recordDiagnostics(diagnostics, headerIssues);
+      return false;
     }
+
+    let hasStructuralIssues = false;
 
     for await (const record of readCsvRecords(filePath)) {
       if (!record.issue) {
         continue;
       }
 
-      issues.push(...validateDatasetRecord(type, record));
+      await recordDiagnostics(diagnostics, validateDatasetRecord(type, record));
+      hasStructuralIssues = true;
     }
 
-    return issues;
+    return !hasStructuralIssues;
   }
 
   async function importFile(job: StoredDatasetImportJob, diagnostics: DatasetImportDiagnosticsCollector): Promise<DatasetImportResult> {
@@ -162,4 +169,13 @@ async function removeTemporaryFile(filePath: string): Promise<void> {
 
 function getErrorName(error: unknown): string {
   return error instanceof Error ? error.name : 'UnknownError';
+}
+
+async function recordDiagnostics(
+  diagnostics: DatasetImportDiagnosticsCollector,
+  issues: readonly import('../domain/dataset-import-queue.types.js').DatasetImportDiagnosticInput[],
+): Promise<void> {
+  for (const issue of issues) {
+    await diagnostics.record(issue);
+  }
 }

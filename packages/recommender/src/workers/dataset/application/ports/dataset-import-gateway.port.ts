@@ -40,6 +40,10 @@ export interface DatasetImportGateway {
   requeueWaitingJobs(dependency: DatasetDependency['type']): Promise<void>;
   reportJobFailure(job: StoredDatasetImportJob, error: unknown): void;
   reportProcessorFailure(error: unknown): void;
-  validateFileStructure(type: DatasetFileType, filePath: string): Promise<DatasetImportDiagnosticInput[]>;
+  validateFileStructure(
+    type: DatasetFileType,
+    filePath: string,
+    diagnostics: DatasetImportDiagnosticsCollector,
+  ): Promise<boolean>;
   waitForDependencies(job: StoredDatasetImportJob, dependencies: DatasetDependency[]): Promise<void>;
 }

@@ -8,11 +8,17 @@ import { runTrainingJob } from './train.js';
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalModelDirectory = process.env.TRAINING_MODEL_DIR;
+const originalModelVersion = process.env.MODEL_VERSION;
 const directories: string[] = [];
 
 afterEach(async () => {
   process.env.DATABASE_URL = originalDatabaseUrl;
   process.env.TRAINING_MODEL_DIR = originalModelDirectory;
+  if (originalModelVersion === undefined) {
+    delete process.env.MODEL_VERSION;
+  } else {
+    process.env.MODEL_VERSION = originalModelVersion;
+  }
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
 });
 
@@ -24,6 +30,7 @@ describe('runTrainingJob', () => {
     const modelDirectory = join(directory, 'model');
     process.env.DATABASE_URL = `file:${databasePath}`;
     process.env.TRAINING_MODEL_DIR = modelDirectory;
+    delete process.env.MODEL_VERSION;
     const client = createClient({ url: process.env.DATABASE_URL });
 
     try {

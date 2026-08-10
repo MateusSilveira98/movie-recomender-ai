@@ -67,9 +67,7 @@ export function createDatasetImportQueue(gateway: DatasetImportGateway): Dataset
         await failWithDiagnostics(job, diagnostics, 'Arquivo temporario indisponivel.');
         return;
       }
-      const issues = await gateway.validateFileStructure(job.type, job.storagePath);
-      for (const issue of issues) await diagnostics.record(issue);
-      if (issues.length > 0) {
+      if (!await gateway.validateFileStructure(job.type, job.storagePath, diagnostics)) {
         await failWithDiagnostics(job, diagnostics, 'Estrutura do CSV invalida.');
         await gateway.deleteTemporaryFile(job.storagePath);
         return;
