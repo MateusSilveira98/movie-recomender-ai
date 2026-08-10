@@ -1,8 +1,7 @@
 import type { ModelArtifactStorage } from '../ports/model-artifact-storage.port.js';
 import { loadModelArtifact } from './model-artifact-loader.service.js';
-import { getModelStorageConfiguration } from '../../infrastructure/config/model-storage-configuration.service.js';
-import { createS3ModelArtifactStorage } from '../../infrastructure/persistence/s3-model-artifact-storage.adapter.js';
-import { createTensorflowModelScoreProvider, type ModelScoreProvider } from '../../infrastructure/tensorflow/tensorflow-model-score-provider.adapter.js';
+import type { ModelScoreProvider } from '@pkg/recommender';
+import type { ModelScoreProviderFactory } from '../ports/model-score-provider-factory.port.js';
 
 export interface ModelRuntime {
   dispose(): void;
@@ -19,16 +18,15 @@ export interface ModelRuntimeStatus {
 
 export interface LoadModelRuntimeInput {
   artifactVersion: string;
+  modelScoreProviderFactory: ModelScoreProviderFactory;
   storage: ModelArtifactStorage;
   storagePrefix: string;
 }
 
-type Environment = Readonly<Record<string, string | undefined>>;
-
 export async function loadModelRuntime(input: LoadModelRuntimeInput): Promise<ModelRuntime> {
   try {
     const artifact = await loadModelArtifact(input);
-    const modelScoreProvider = await createTensorflowModelScoreProvider(artifact);
+    const modelScoreProvider = await input.modelScoreProviderFactory.create(artifact);
 
     return {
       dispose: () => modelScoreProvider.dispose(),
@@ -45,26 +43,16 @@ export async function loadModelRuntime(input: LoadModelRuntimeInput): Promise<Mo
   }
 }
 
-export async function loadModelRuntimeFromEnvironment(environment: Environment = process.env): Promise<ModelRuntime> {
-  try {
-    const configuration = getModelStorageConfiguration(environment);
-
-    if (!configuration) {
-      return disabledRuntime();
-    }
-
-    return loadModelRuntime({
-      artifactVersion: configuration.artifactVersion,
-      storage: createS3ModelArtifactStorage(configuration),
-      storagePrefix: configuration.prefix,
-    });
-  } catch {
-    return fallbackRuntime();
-  }
-}
-
 export function getTrainingPipelineStatus(): ModelRuntimeStatus {
   return disabledRuntime().status;
+}
+
+export function createDisabledModelRuntime(): ModelRuntime {
+  return disabledRuntime();
+}
+
+export function createFallbackModelRuntime(): ModelRuntime {
+  return fallbackRuntime();
 }
 
 function disabledRuntime(): ModelRuntime {

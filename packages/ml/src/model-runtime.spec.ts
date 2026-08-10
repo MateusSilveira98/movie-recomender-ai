@@ -11,6 +11,7 @@ import { loadModelRuntime } from './application/services/model-runtime.service.j
 import { publishModelArtifact } from './application/services/model-artifact-publisher.service.js';
 import { MODEL_ARTIFACT_MANIFEST_FILE } from './domain/models/model-artifact.model.js';
 import { getModelArtifactKey } from './domain/services/model-artifact-path.service.js';
+import { createTensorflowModelScoreProvider } from './infrastructure/tensorflow/tensorflow-model-score-provider.adapter.js';
 
 const ARTIFACT_PREFIX = 'movie-recommender';
 
@@ -33,6 +34,7 @@ describe('runtime de inferência do modelo', () => {
 
       const runtime = await loadModelRuntime({
         artifactVersion: manifest.artifactVersion,
+        modelScoreProviderFactory: { create: createTensorflowModelScoreProvider },
         storage,
         storagePrefix: ARTIFACT_PREFIX,
       });
@@ -92,6 +94,7 @@ describe('runtime de inferência do modelo', () => {
 
       const runtime = await loadModelRuntime({
         artifactVersion: 'local-v2',
+        modelScoreProviderFactory: { create: createTensorflowModelScoreProvider },
         storage,
         storagePrefix: ARTIFACT_PREFIX,
       });
@@ -118,6 +121,7 @@ describe('runtime de inferência do modelo', () => {
 
       const runtime = await loadModelRuntime({
         artifactVersion: 'local-v3',
+        modelScoreProviderFactory: { create: createTensorflowModelScoreProvider },
         storage,
         storagePrefix: ARTIFACT_PREFIX,
       });
