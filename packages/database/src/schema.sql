@@ -133,6 +133,41 @@ CREATE TABLE IF NOT EXISTS dataset_uploads (
   completed_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS dataset_import_diagnostics (
+  id TEXT PRIMARY KEY,
+  upload_id TEXT NOT NULL,
+  line_start INTEGER CHECK (line_start IS NULL OR line_start > 0),
+  line_end INTEGER CHECK (line_end IS NULL OR line_end > 0),
+  field_name TEXT,
+  value_preview TEXT,
+  diagnostic_category TEXT NOT NULL CHECK (diagnostic_category IN ('structure', 'validation', 'reference', 'integrity')),
+  reason TEXT NOT NULL CHECK (reason IN ('invalid_encoding', 'invalid_header', 'invalid_row', 'invalid_field', 'movie_not_found', 'link_not_found', 'duplicate_value')),
+  rule_code TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE,
+  CHECK (line_end IS NULL OR line_start IS NULL OR line_end >= line_start)
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_diagnostic_summaries (
+  upload_id TEXT NOT NULL,
+  diagnostic_category TEXT NOT NULL CHECK (diagnostic_category IN ('structure', 'validation', 'reference', 'integrity')),
+  field_name TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL CHECK (reason IN ('invalid_encoding', 'invalid_header', 'invalid_row', 'invalid_field', 'movie_not_found', 'link_not_found', 'duplicate_value')),
+  rule_code TEXT NOT NULL,
+  count INTEGER NOT NULL CHECK (count > 0),
+  PRIMARY KEY (upload_id, diagnostic_category, field_name, reason, rule_code),
+  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_rating_keys (
+  upload_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL,
+  movie_lens_id INTEGER NOT NULL,
+  PRIMARY KEY (upload_id, user_id, movie_lens_id),
+  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS dataset_import_jobs (
   id TEXT PRIMARY KEY,
   upload_id TEXT NOT NULL UNIQUE,
@@ -231,6 +266,7 @@ CREATE TABLE IF NOT EXISTS recommendation_rounds (
   genres_json TEXT NOT NULL DEFAULT '[]',
   runtime_preference TEXT NOT NULL CHECK (runtime_preference IN ('any', 'short', 'medium', 'long')),
   ranking_version TEXT NOT NULL,
+  model_version TEXT,
   candidate_count INTEGER NOT NULL CHECK (candidate_count >= 0),
   created_at_ms INTEGER NOT NULL,
   UNIQUE (session_id, sequence)
@@ -261,6 +297,10 @@ CREATE INDEX IF NOT EXISTS idx_movie_ratings_stats_rating_average ON movie_ratin
 CREATE INDEX IF NOT EXISTS idx_dataset_import_runs_lookup ON dataset_import_runs (dataset_key, environment, started_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_import_runs_running ON dataset_import_runs (dataset_key, environment) WHERE status = 'running';
 CREATE INDEX IF NOT EXISTS idx_dataset_uploads_status_created_at ON dataset_uploads (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_diagnostics_upload_line ON dataset_import_diagnostics (upload_id, line_start, id);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_diagnostics_summary ON dataset_import_diagnostics (upload_id, diagnostic_category, rule_code, field_name);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_diagnostic_summaries_upload ON dataset_import_diagnostic_summaries (upload_id, diagnostic_category, reason, rule_code);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_rating_keys_upload ON dataset_import_rating_keys (upload_id);
 CREATE INDEX IF NOT EXISTS idx_dataset_import_jobs_status_created_at ON dataset_import_jobs (status, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_import_jobs_single_processing ON dataset_import_jobs (status) WHERE status = 'processing';
 CREATE INDEX IF NOT EXISTS idx_sessions_status_created_at ON sessions (status, created_at);

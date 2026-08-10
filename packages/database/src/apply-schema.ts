@@ -35,6 +35,13 @@ async function migrateAnonymousSessionSchema(client: Client): Promise<void> {
     await client.execute({ sql: 'ALTER TABLE sessions ADD COLUMN expires_at_ms INTEGER', args: [] });
   }
 
+  const recommendationRoundColumns = await client.execute({ sql: 'PRAGMA table_info(recommendation_rounds)', args: [] });
+  const existingRecommendationRoundColumns = new Set(recommendationRoundColumns.rows.map((column) => String(column.name)));
+
+  if (!existingRecommendationRoundColumns.has('model_version')) {
+    await client.execute({ sql: 'ALTER TABLE recommendation_rounds ADD COLUMN model_version TEXT', args: [] });
+  }
+
   await client.executeMultiple(`
     CREATE INDEX IF NOT EXISTS idx_anonymous_profiles_expires_at_ms ON anonymous_profiles (expires_at_ms);
     CREATE INDEX IF NOT EXISTS idx_anonymous_profile_movie_feedback_profile_id ON anonymous_profile_movie_feedback (profile_id);
