@@ -3,7 +3,7 @@ import express from 'express';
 import type { Client } from '@libsql/client';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
 import { getTrainingPipelineStatus, type ModelRuntimeStatus } from '@pkg/ml';
-import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportQueue, type RecommendationRanker } from '@pkg/recommender';
+import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, type RecommendationRanker } from '@pkg/recommender';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
 import { createSqlMovieCatalogRepository } from '../domains/movies/repositories/movies.repository.js';
 import { createSqlSessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
@@ -13,6 +13,7 @@ import { isAllowedWebOrigin } from './web-origin.js';
 
 interface AppDependencies {
   databaseClient?: Client;
+  datasetImportAdminToken?: string;
   mlStatus?: ModelRuntimeStatus;
   processDatasetQueue?: boolean;
   recommendationRanker?: RecommendationRanker;
@@ -20,12 +21,13 @@ interface AppDependencies {
 
 export function createApp({
   databaseClient = createDatabaseClient(),
+  datasetImportAdminToken = process.env.DATASET_IMPORT_ADMIN_TOKEN,
   mlStatus = getTrainingPipelineStatus(),
   processDatasetQueue = true,
   recommendationRanker = createRecommendationRanker(),
 }: AppDependencies = {}): express.Express {
   const app = express();
-  const datasetImportQueue = createDatasetImportQueue(createSqlDatasetImportQueue(databaseClient));
+  const datasetImportQueue = createDatasetImportQueue(createSqlDatasetImportGateway(databaseClient));
   const movieCatalogRepository = createSqlMovieCatalogRepository(databaseClient);
   const sessionRepository = createSqlSessionRepository(databaseClient);
 
@@ -64,7 +66,7 @@ export function createApp({
     });
   });
 
-  app.use(createAppRouter({ datasetImportQueue, movieCatalogRepository, recommendationRanker, sessionRepository }));
+  app.use(createAppRouter({ datasetImportAdminToken, datasetImportQueue, movieCatalogRepository, recommendationRanker, sessionRepository }));
   app.use(requestErrorHandler);
 
   if (processDatasetQueue) {

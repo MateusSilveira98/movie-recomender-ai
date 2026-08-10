@@ -7,6 +7,7 @@ import { createSessionsRoutes } from '../domains/sessions/routes/sessions.routes
 import type { SessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
 
 interface AppRouterDependencies {
+  datasetImportAdminToken: string | undefined;
   datasetImportQueue: DatasetImportQueue;
   movieCatalogRepository: MovieCatalogRepository;
   recommendationRanker: RecommendationRanker;
@@ -14,6 +15,7 @@ interface AppRouterDependencies {
 }
 
 export function createAppRouter({
+  datasetImportAdminToken,
   datasetImportQueue,
   movieCatalogRepository,
   recommendationRanker,
@@ -23,7 +25,7 @@ export function createAppRouter({
 
   router.use(createMoviesRoutes(movieCatalogRepository));
   router.use(createSessionsRoutes({ movieCatalogRepository, recommendationRanker, sessionRepository }));
-  router.use(createDatasetImportsRoutes(datasetImportQueue));
+  router.use(createDatasetImportsRoutes(datasetImportQueue, datasetImportAdminToken));
 
   return router;
 }

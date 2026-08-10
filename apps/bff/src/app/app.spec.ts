@@ -300,8 +300,32 @@ describe('API de perfil anônimo', () => {
 });
 
 describe('API de diagnósticos de importação', () => {
-  it('deve retornar erros paginados e validar os parâmetros de paginação', async () => {
+  it('deve bloquear importação sem chave administrativa válida', async () => {
     const context = await createTestContext();
+
+    try {
+      const unavailable = await request(context, '/dataset-uploads');
+      const protectedContext = await createTestContext({ datasetImportAdminToken: 'token-administrativo' });
+
+      try {
+        const denied = await request(protectedContext, '/dataset-uploads');
+        const allowed = await request(protectedContext, '/dataset-uploads', {
+          headers: { 'X-Dataset-Import-Token': 'token-administrativo' },
+        });
+
+        assert.equal(unavailable.status, 503);
+        assert.equal(denied.status, 403);
+        assert.equal(allowed.status, 200);
+      } finally {
+        await protectedContext.dispose();
+      }
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  it('deve retornar erros paginados e validar os parâmetros de paginação', async () => {
+    const context = await createTestContext({ datasetImportAdminToken: 'token-administrativo' });
 
     try {
       await context.client.batch([
@@ -329,14 +353,15 @@ describe('API de diagnósticos de importação', () => {
         },
       ], 'write');
 
-      const response = await request(context, '/dataset-uploads/upload-com-erros/diagnostics?limit=1&offset=0');
+      const importHeaders = { 'X-Dataset-Import-Token': 'token-administrativo' };
+      const response = await request(context, '/dataset-uploads/upload-com-erros/diagnostics?limit=1&offset=0', { headers: importHeaders });
       const body = await response.json() as {
         diagnostics: Array<{ field: string; fileName: string; lineStart: number }>;
         page: { detectedTotal: number; total: number; truncated: boolean };
         summary: Array<{ category: string; count: number; field: string; reason: string; ruleCode: string }>;
       };
-      const invalidPagination = await request(context, '/dataset-uploads/upload-com-erros/diagnostics?limit=101');
-      const missingUpload = await request(context, '/dataset-uploads/inexistente/diagnostics');
+      const invalidPagination = await request(context, '/dataset-uploads/upload-com-erros/diagnostics?limit=101', { headers: importHeaders });
+      const missingUpload = await request(context, '/dataset-uploads/inexistente/diagnostics', { headers: importHeaders });
 
       assert.equal(response.status, 200);
       assert.equal(body.page.total, 1);
@@ -365,7 +390,7 @@ interface StartedProfile {
   csrfToken: string;
 }
 
-async function createTestContext(options: { recommendationRanker?: RecommendationRanker } = {}) {
+async function createTestContext(options: { datasetImportAdminToken?: string; recommendationRanker?: RecommendationRanker } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'movie-recommender-bff-'));
   const client = createClient({ url: `file:${join(directory, 'database.db')}` });
   await client.executeMultiple(await readFile('packages/database/src/schema.sql', 'utf8'));

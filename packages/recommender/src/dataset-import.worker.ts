@@ -1,10 +1,10 @@
 import { logger } from '@pkg/logger';
 import { createDatabaseClient } from '@pkg/database';
 import { createDatasetImportQueue } from './workers/dataset/application/dataset-import-queue.service.js';
-import { createSqlDatasetImportQueue } from './workers/dataset/infrastructure/dataset-import-queue.adapter.js';
+import { createSqlDatasetImportGateway } from './workers/dataset/infrastructure/dataset-import-queue.adapter.js';
 
 const client = createDatabaseClient();
-const queue = createDatasetImportQueue(createSqlDatasetImportQueue(client));
+const queue = createDatasetImportQueue(createSqlDatasetImportGateway(client));
 
 queue.processPending()
   .catch((error: unknown) => {

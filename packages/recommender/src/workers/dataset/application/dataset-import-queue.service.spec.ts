@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { createClient } from '@libsql/client';
 import { createDatasetImportQueue } from './dataset-import-queue.service.js';
-import { createSqlDatasetImportQueue } from '../infrastructure/dataset-import-queue.adapter.js';
+import { createSqlDatasetImportGateway } from '../infrastructure/dataset-import-queue.adapter.js';
 import { createDatasetImportDiagnosticsCollector, MAX_PERSISTED_DIAGNOSTICS } from '../infrastructure/persistence/dataset-import-diagnostics.repository.js';
 import { createDatasetUploadWithJob } from '../infrastructure/persistence/dataset-import-queue.repository.js';
 
@@ -50,7 +50,7 @@ describe('fila de importacao do dataset', () => {
         { sql: "UPDATE dataset_import_jobs SET status = 'processing' WHERE id = ?", args: [upload.jobId] },
         { sql: "UPDATE dataset_uploads SET status = 'processing' WHERE id = ?", args: [upload.id] },
       ], 'write');
-      const recoveredQueue = createDatasetImportQueue(createSqlDatasetImportQueue(context.client));
+      const recoveredQueue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client));
 
       await recoveredQueue.processPending();
 
@@ -371,7 +371,7 @@ async function createTestContext() {
   const directory = await mkdtemp(join(tmpdir(), 'movie-recommender-dataset-'));
   const client = createClient({ url: `file:${join(directory, 'database.db')}` });
   await client.executeMultiple(await readFile('packages/database/src/schema.sql', 'utf8'));
-  const queue = createDatasetImportQueue(createSqlDatasetImportQueue(client));
+  const queue = createDatasetImportQueue(createSqlDatasetImportGateway(client));
 
   return {
     client,
