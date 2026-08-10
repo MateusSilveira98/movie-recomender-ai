@@ -8,6 +8,7 @@ import {
 } from './recommendations/application/services/recommendation-ranker.service.js';
 
 export { createDatasetImportQueue, type DatasetImportQueue } from './workers/dataset/application/dataset-import-queue.service.js';
+export { createSqlDatasetImportQueue } from './workers/dataset/infrastructure/dataset-import-queue.adapter.js';
 export {
   DATASET_FILE_TYPES,
   type DatasetDiagnosticSummary,
