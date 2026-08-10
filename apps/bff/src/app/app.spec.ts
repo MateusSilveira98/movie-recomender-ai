@@ -12,6 +12,18 @@ import { createApp } from './app.js';
 const WEB_ORIGIN = 'http://localhost:5173';
 
 describe('API de perfil anônimo', () => {
+  it('não deve expor recomendações de demonstração', async () => {
+    const context = await createTestContext();
+
+    try {
+      const response = await request(context, '/recommendations/demo');
+
+      assert.equal(response.status, 404);
+    } finally {
+      await context.dispose();
+    }
+  });
+
   it('deve proteger sessão por cookie, CSRF e perfil proprietário', async () => {
     const context = await createTestContext();
 

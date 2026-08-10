@@ -3,8 +3,7 @@ import express from 'express';
 import type { Client } from '@libsql/client';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
 import { getTrainingPipelineStatus, type ModelRuntimeStatus } from '@pkg/ml';
-import { createDatasetImportQueue, createRecommendationRanker, getDemoRecommendations, type RecommendationRanker } from '@pkg/recommender';
-import { createSessionProfile } from '@pkg/shared/data-access/factories/session-profile.factory';
+import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportQueue, type RecommendationRanker } from '@pkg/recommender';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
 import { createSqlMovieCatalogRepository } from '../domains/movies/repositories/movies.repository.js';
 import { createSqlSessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
@@ -26,7 +25,7 @@ export function createApp({
   recommendationRanker = createRecommendationRanker(),
 }: AppDependencies = {}): express.Express {
   const app = express();
-  const datasetImportQueue = createDatasetImportQueue(databaseClient);
+  const datasetImportQueue = createDatasetImportQueue(createSqlDatasetImportQueue(databaseClient));
   const movieCatalogRepository = createSqlMovieCatalogRepository(databaseClient);
   const sessionRepository = createSqlSessionRepository(databaseClient);
 
@@ -62,19 +61,6 @@ export function createApp({
       message: getHealthMessage('bff'),
       database: await getDatabaseHealth(),
       ml: mlStatus,
-    });
-  });
-
-  app.get('/recommendations/demo', (_request, response) => {
-    const profile = createSessionProfile({
-      genres: ['Ficcao cientifica', 'Suspense'],
-      likedMovies: ['Matrix'],
-      dislikedMovies: ['Interestelar'],
-    });
-
-    response.json({
-      profile,
-      recommendations: getDemoRecommendations(profile),
     });
   });
 
