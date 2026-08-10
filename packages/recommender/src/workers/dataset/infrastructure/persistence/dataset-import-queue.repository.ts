@@ -102,6 +102,7 @@ export async function completeDatasetImportJob(client: Client, job: StoredDatase
         job.uploadId,
       ],
     },
+    { sql: 'DELETE FROM dataset_import_rating_keys WHERE upload_id = ?', args: [job.uploadId] },
   ], 'write');
 }
 
@@ -120,7 +121,7 @@ export async function waitForDatasetDependencies(client: Client, job: StoredData
   ], 'write');
 }
 
-export async function failDatasetImportJob(client: Client, job: StoredDatasetImportJob, errorMessage: string, failure: DatasetFailure): Promise<void> {
+export async function failDatasetImportJob(client: Client, job: StoredDatasetImportJob, errorMessage: string, failures: DatasetFailure[]): Promise<void> {
   await client.batch([
     {
       sql: `UPDATE dataset_import_jobs SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error_message = ? WHERE id = ?`,
@@ -131,7 +132,26 @@ export async function failDatasetImportJob(client: Client, job: StoredDatasetImp
         SET status = 'error', failures_json = ?, dependencies_json = '[]', error_message = ?, updated_at = CURRENT_TIMESTAMP,
           completed_at = CURRENT_TIMESTAMP, storage_path = NULL
         WHERE id = ?`,
-      args: [JSON.stringify([failure]), errorMessage, job.uploadId],
+      args: [JSON.stringify(failures), errorMessage, job.uploadId],
+    },
+    { sql: 'DELETE FROM dataset_import_rating_keys WHERE upload_id = ?', args: [job.uploadId] },
+  ], 'write');
+}
+
+export async function requeueRetryableDatasetImportJob(client: Client, job: StoredDatasetImportJob, errorMessage: string): Promise<void> {
+  await client.batch([
+    {
+      sql: `UPDATE dataset_import_jobs
+        SET status = 'queued', error_message = ?, completed_at = NULL
+        WHERE id = ? AND status = 'processing'`,
+      args: [errorMessage, job.id],
+    },
+    {
+      sql: `UPDATE dataset_uploads
+        SET status = 'queued', error_message = ?, failures_json = '[]', dependencies_json = '[]',
+          completed_at = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+      args: [errorMessage, job.uploadId],
     },
   ], 'write');
 }
@@ -157,6 +177,24 @@ export async function requeueWaitingDatasetJobs(client: Client, dependency: Data
       },
     ], 'write');
   }
+}
+
+export async function requeueInterruptedDatasetImportJobs(client: Client): Promise<void> {
+  await client.batch([
+    {
+      sql: `UPDATE dataset_import_jobs
+        SET status = 'queued', error_message = NULL
+        WHERE status = 'processing'`,
+      args: [],
+    },
+    {
+      sql: `UPDATE dataset_uploads
+        SET status = 'queued', error_message = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (SELECT upload_id FROM dataset_import_jobs WHERE status = 'queued')
+          AND status = 'processing'`,
+      args: [],
+    },
+  ], 'write');
 }
 
 export async function listDatasetUploads(client: Client): Promise<DatasetUpload[]> {

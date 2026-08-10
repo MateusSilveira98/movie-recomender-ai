@@ -3,7 +3,8 @@ import type { Client } from '@libsql/client';
 import { logger } from '@pkg/logger';
 import type {
   DatasetDependency,
-  DatasetFailure,
+  DatasetDiagnosticsPage,
+  DatasetDiagnosticsPagination,
   DatasetFileType,
   DatasetImportJob,
   DatasetImportResult,
@@ -11,8 +12,16 @@ import type {
   DatasetUploadInput,
 } from '../domain/dataset-import-queue.types.js';
 import { resolveMissingDatasetDependencies } from '../domain/dataset-import-dependencies.service.js';
-import { readCsvHeaders } from '../infrastructure/data/csv.reader.js';
+import { hasValidUtf8Encoding, readCsvHeader, readCsvRecords } from '../infrastructure/data/csv.reader.js';
 import { loadStoredDatasetLinks } from '../infrastructure/data/dataset-links.loader.js';
+import { createDatasetDiagnostic, validateDatasetHeaders, validateDatasetRecord } from '../infrastructure/validation/dataset-csv.validator.js';
+import {
+  clearDatasetImportDiagnostics,
+  createDatasetImportDiagnosticsCollector,
+  listDatasetImportDiagnostics,
+  type DatasetImportDiagnosticsCollector,
+} from '../infrastructure/persistence/dataset-import-diagnostics.repository.js';
+import { clearDatasetImportRatingKeys } from '../infrastructure/persistence/dataset-import-rating-keys.repository.js';
 import {
   claimNextDatasetImportJob,
   completeDatasetImportJob,
@@ -22,6 +31,7 @@ import {
   findDatasetUpload,
   listDatasetImportJobs,
   listDatasetUploads,
+  requeueInterruptedDatasetImportJobs,
   requeueWaitingDatasetJobs,
   type StoredDatasetImportJob,
   waitForDatasetDependencies,
@@ -32,16 +42,10 @@ import { importLinks } from '../infrastructure/persistence/importers/links.impor
 import { importMovies } from '../infrastructure/persistence/importers/movies.importer.js';
 import { importRatingStats } from '../infrastructure/persistence/importers/ratings.importer.js';
 
-const REQUIRED_HEADERS: Record<DatasetFileType, string[]> = {
-  credits: ['id', 'cast', 'crew'],
-  links: ['movieId', 'tmdbId'],
-  movies: ['id', 'title', 'genres', 'release_date'],
-  ratings: ['movieId', 'rating', 'timestamp'],
-};
-
 export interface DatasetImportQueue {
   enqueue(upload: DatasetUploadInput): Promise<DatasetUpload>;
   findUpload(uploadId: string): Promise<DatasetUpload | null>;
+  listDiagnostics(uploadId: string, pagination: DatasetDiagnosticsPagination): Promise<DatasetDiagnosticsPage | null>;
   listJobs(): Promise<DatasetImportJob[]>;
   listUploads(): Promise<DatasetUpload[]>;
   processPending(): Promise<void>;
@@ -49,7 +53,7 @@ export interface DatasetImportQueue {
 
 export function createDatasetImportQueue(client: Client): DatasetImportQueue {
   let isProcessing = false;
-  let recoveredWaitingJobs = false;
+  let recoveredJobs = false;
 
   return {
     async enqueue(upload) {
@@ -59,6 +63,9 @@ export function createDatasetImportQueue(client: Client): DatasetImportQueue {
     },
     findUpload(uploadId) {
       return findDatasetUpload(client, uploadId);
+    },
+    listDiagnostics(uploadId, pagination) {
+      return listDatasetImportDiagnostics(client, uploadId, pagination);
     },
     listJobs() {
       return listDatasetImportJobs(client);
@@ -77,10 +84,11 @@ export function createDatasetImportQueue(client: Client): DatasetImportQueue {
     isProcessing = true;
 
     try {
-      if (!recoveredWaitingJobs) {
+      if (!recoveredJobs) {
+        await requeueInterruptedDatasetImportJobs(client);
         await requeueWaitingDatasetJobs(client, 'movies');
         await requeueWaitingDatasetJobs(client, 'links');
-        recoveredWaitingJobs = true;
+        recoveredJobs = true;
       }
 
       let job = await claimNextDatasetImportJob(client);
@@ -97,17 +105,27 @@ export function createDatasetImportQueue(client: Client): DatasetImportQueue {
   }
 
   async function processJob(job: StoredDatasetImportJob): Promise<void> {
-    if (!job.storagePath) {
-      await failDatasetImportJob(client, job, 'Arquivo temporario indisponivel.', invalidHeaderFailure('Arquivo temporario indisponivel.'));
-      return;
-    }
+    const diagnostics = createDatasetImportDiagnosticsCollector(client, job.uploadId);
 
     try {
-      const headers = await readCsvHeaders(job.storagePath);
-      const missingHeaders = REQUIRED_HEADERS[job.type].filter((header) => !headers.includes(header));
+      await clearDatasetImportDiagnostics(client, job.uploadId);
+      await clearDatasetImportRatingKeys(client, job.uploadId);
 
-      if (missingHeaders.length > 0) {
-        await failDatasetImportJob(client, job, 'Cabecalho CSV invalido.', invalidHeaderFailure(`Campos obrigatorios ausentes: ${missingHeaders.join(', ')}.`));
+      if (!job.storagePath) {
+        await diagnostics.record(createDatasetDiagnostic({ lineEnd: null, lineStart: null }, {
+          category: 'structure',
+          field: null,
+          message: 'O arquivo temporario nao esta mais disponivel.',
+          reason: 'invalid_row',
+          ruleCode: 'temporary_file_missing',
+          value: null,
+        }));
+        await failWithDiagnostics(job, diagnostics, 'Arquivo temporario indisponivel.');
+        return;
+      }
+
+      if (!await validateFileStructure(job.type, job.storagePath, diagnostics)) {
+        await failWithDiagnostics(job, diagnostics, 'Estrutura do CSV invalida.');
         await removeTemporaryFile(job.storagePath);
         return;
       }
@@ -119,7 +137,8 @@ export function createDatasetImportQueue(client: Client): DatasetImportQueue {
         return;
       }
 
-      const result = await importFile(job);
+      const result = await importFile(job, diagnostics);
+      await diagnostics.flush();
       await completeDatasetImportJob(client, job, result);
       await removeTemporaryFile(job.storagePath);
 
@@ -129,10 +148,62 @@ export function createDatasetImportQueue(client: Client): DatasetImportQueue {
 
       logger.info({ component: 'dataset-import-queue', event: 'job_completed', importedRows: result.summary.imported, jobId: job.id, type: job.type });
     } catch (error) {
-      await failDatasetImportJob(client, job, 'Falha ao processar o arquivo enviado.', invalidHeaderFailure('Nao foi possivel processar o CSV.'));
-      await removeTemporaryFile(job.storagePath);
+      await diagnostics.record(createDatasetDiagnostic({ lineEnd: null, lineStart: null }, {
+        category: 'structure',
+        field: null,
+        message: 'Nao foi possivel processar o CSV.',
+        reason: 'invalid_row',
+        ruleCode: 'processing_failed',
+        value: null,
+      }));
+      await failWithDiagnostics(job, diagnostics, 'Falha ao processar o arquivo enviado.');
+
+      if (job.storagePath) {
+        await removeTemporaryFile(job.storagePath);
+      }
+
       logger.error({ component: 'dataset-import-queue', error: getErrorName(error), event: 'job_failed', jobId: job.id, type: job.type });
     }
+  }
+
+  async function validateFileStructure(type: DatasetFileType, filePath: string, diagnostics: DatasetImportDiagnosticsCollector): Promise<boolean> {
+    if (!await hasValidUtf8Encoding(filePath)) {
+      await diagnostics.record(createDatasetDiagnostic({ lineEnd: null, lineStart: null }, {
+        category: 'structure',
+        field: null,
+        message: 'O arquivo deve usar codificacao UTF-8 valida.',
+        reason: 'invalid_encoding',
+        ruleCode: 'utf8_encoding',
+        value: null,
+      }));
+      return false;
+    }
+
+    const header = await readCsvHeader(filePath);
+    const headerIssues = validateDatasetHeaders(type, header);
+
+    if (headerIssues.length > 0) {
+      await recordDiagnostics(diagnostics, headerIssues);
+      return false;
+    }
+
+    let hasStructuralIssue = false;
+
+    for await (const record of readCsvRecords(filePath)) {
+      if (!record.issue) {
+        continue;
+      }
+
+      await recordDiagnostics(diagnostics, validateDatasetRecord(type, record));
+      hasStructuralIssue = true;
+    }
+
+    return !hasStructuralIssue;
+  }
+
+  async function failWithDiagnostics(job: StoredDatasetImportJob, diagnostics: DatasetImportDiagnosticsCollector, message: string): Promise<void> {
+    await diagnostics.flush();
+    await failDatasetImportJob(client, job, message, diagnostics.failures());
   }
 
   async function getMissingDependencies(type: DatasetFileType): Promise<DatasetDependency[]> {
@@ -141,42 +212,42 @@ export function createDatasetImportQueue(client: Client): DatasetImportQueue {
     return resolveMissingDatasetDependencies(type, { links: linksCount, movies: moviesCount });
   }
 
-  async function importFile(job: StoredDatasetImportJob): Promise<DatasetImportResult> {
+  async function importFile(job: StoredDatasetImportJob, diagnostics: DatasetImportDiagnosticsCollector): Promise<DatasetImportResult> {
     const filePath = job.storagePath as string;
 
     if (job.type === 'movies') {
-      const movieImport = await importMovies(client, filePath, await loadStoredDatasetLinks(client));
+      const movieImport = await importMovies(client, filePath, await loadStoredDatasetLinks(client), diagnostics);
       await importMovieFeatures(client, movieImport.featureDrafts);
-      return resultFor(movieImport.processedCount, movieImport.importedCount, movieImport.rejectedCount, 0, []);
+      return resultFor(movieImport.processedCount, movieImport.importedCount, movieImport.rejectedCount, 0, diagnostics);
     }
 
     if (job.type === 'links') {
-      const linksImport = await importLinks(client, filePath);
-      return resultFor(linksImport.processedRows, linksImport.importedRows, linksImport.rejectedRows, 0, []);
+      const linksImport = await importLinks(client, filePath, diagnostics);
+      return resultFor(linksImport.processedRows, linksImport.importedRows, linksImport.rejectedRows, 0, diagnostics);
     }
 
     const knownMovieIds = await loadKnownMovieIds();
 
     if (job.type === 'credits') {
       const featureDrafts = new Map();
-      const creditsImport = await importCredits(client, filePath, knownMovieIds, featureDrafts);
+      const creditsImport = await importCredits(client, filePath, knownMovieIds, featureDrafts, diagnostics);
       await updateMovieFeaturePeople(client, featureDrafts);
       return resultFor(
         creditsImport.processedRows,
         creditsImport.importedRows,
         creditsImport.rejectedRows,
         creditsImport.missingMovieRows,
-        creditsImport.missingMovieRows > 0 ? [failure('movie_not_found', creditsImport.missingMovieRows, 'Filmes referenciados nao foram encontrados.')] : [],
+        diagnostics,
       );
     }
 
-    const ratingsImport = await importRatingStats(client, filePath, (await loadStoredDatasetLinks(client)).byMovieLensId, knownMovieIds);
+    const ratingsImport = await importRatingStats(client, filePath, (await loadStoredDatasetLinks(client)).byMovieLensId, knownMovieIds, diagnostics, job.uploadId);
     return resultFor(
       ratingsImport.processedRows,
       ratingsImport.importedRows,
       ratingsImport.rejectedRows,
       ratingsImport.missingDependencyRows,
-      ratingsImport.missingDependencyRows > 0 ? [failure('link_not_found', ratingsImport.missingDependencyRows, 'Filmes ou vinculos MovieLens referenciados nao foram encontrados.')] : [],
+      diagnostics,
     );
   }
 
@@ -186,21 +257,24 @@ export function createDatasetImportQueue(client: Client): DatasetImportQueue {
   }
 }
 
-function resultFor(processed: number, imported: number, rejected: number, waitingDependencies: number, extraFailures: DatasetFailure[]): DatasetImportResult {
-  const failures = [
-    ...extraFailures,
-    ...(rejected > 0 ? [failure('invalid_row', rejected, 'Linhas invalidas foram ignoradas.')] : []),
-  ];
-
-  return { dependencies: [], failures, summary: { imported, processed, rejected, waitingDependencies } };
+function resultFor(
+  processed: number,
+  imported: number,
+  rejected: number,
+  waitingDependencies: number,
+  diagnostics: DatasetImportDiagnosticsCollector,
+): DatasetImportResult {
+  return {
+    dependencies: [],
+    failures: diagnostics.failures(),
+    summary: { imported, processed, rejected, waitingDependencies },
+  };
 }
 
-function failure(reason: DatasetFailure['reason'], count: number, message: string): DatasetFailure {
-  return { count, message, reason };
-}
-
-function invalidHeaderFailure(message: string): DatasetFailure {
-  return failure('invalid_header', 1, message);
+async function recordDiagnostics(diagnostics: DatasetImportDiagnosticsCollector, issues: Parameters<DatasetImportDiagnosticsCollector['record']>[0][]): Promise<void> {
+  for (const issue of issues) {
+    await diagnostics.record(issue);
+  }
 }
 
 async function removeTemporaryFile(filePath: string): Promise<void> {
