@@ -135,7 +135,7 @@ export function useRecommendationFlow() {
 
       applySession(session, currentSession.recommendations);
       setRecommendationRounds((rounds) => [
-        buildRecommendationRound(session, currentSession.recommendations),
+        buildRecommendationRound(session, currentSession.recommendations, movies),
         ...rounds,
       ]);
       setHasStoredSession(true);
@@ -175,9 +175,25 @@ export function useRecommendationFlow() {
   function updateActiveRound(session: Session, nextRecommendations: SessionRecommendation[]) {
     setRecommendationRounds((rounds) => {
       const [activeRound, ...otherRounds] = rounds;
-      const updatedRound = buildRecommendationRound(session, nextRecommendations);
+      const updatedRound = buildRecommendationRound(session, nextRecommendations, movies);
 
-      return activeRound ? [{ ...activeRound, ...updatedRound }, ...otherRounds] : [updatedRound];
+      if (!activeRound) {
+        return [updatedRound];
+      }
+
+      return [
+        {
+          ...activeRound,
+          history: updatedRound.history,
+          movieTitles: { ...activeRound.movieTitles, ...updatedRound.movieTitles },
+          preferences: updatedRound.preferences,
+          recommendations: [
+            ...activeRound.recommendations,
+            ...nextRecommendations.filter((recommendation) => !activeRound.recommendations.some((current) => current.id === recommendation.id)),
+          ],
+        },
+        ...otherRounds,
+      ];
     });
   }
 
@@ -248,10 +264,17 @@ function updateOpinionList(movieIds: string[], movieId: string, shouldInclude: b
   return Array.from(new Set([...movieIds, movieId]));
 }
 
-function buildRecommendationRound(session: Session, recommendations: SessionRecommendation[]): RecommendationRound {
+function buildRecommendationRound(
+  session: Session,
+  recommendations: SessionRecommendation[],
+  movies: Movie[],
+): RecommendationRound {
   return toRecommendationRound({
     createdAt: session.createdAt,
     history: session.history,
+    movieTitles: Object.fromEntries(
+      [...movies, ...recommendations].map((movie) => [movie.id, movie.title]).filter(([, title]) => title.length > 0),
+    ),
     preferences: session.preferences,
     recommendations,
   });
@@ -263,6 +286,7 @@ function toRecommendationRound(round: StoredRecommendationRound): Recommendation
     createdAt: round.createdAt,
     preferences: clonePreferences(round.preferences),
     history: cloneHistory(round.history),
+    movieTitles: { ...(round.movieTitles ?? {}) },
     recommendations: round.recommendations.map(cloneRecommendation),
   };
 }

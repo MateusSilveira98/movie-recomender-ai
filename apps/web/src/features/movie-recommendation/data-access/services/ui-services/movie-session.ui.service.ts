@@ -7,5 +7,6 @@ export interface RecommendationRound {
   createdAt: string;
   preferences: Preferences;
   history: ViewerHistory;
+  movieTitles: Record<string, string>;
   recommendations: Recommendation[];
 }

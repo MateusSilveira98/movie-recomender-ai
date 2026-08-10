@@ -1,1 +1,1 @@
-export type RecommendationResultTab = 'recommendations' | 'rounds';
+export type RecommendationResultTab = 'recommendations' | 'liked' | 'disliked' | 'rounds';
