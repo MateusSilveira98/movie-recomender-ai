@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { createClient, type Client } from '@libsql/client';
-import { createRecommendationRanker, type RecommendationRanker } from '@pkg/recommender';
+import { createRecommendationRanker, type DatasetImportQueue, type RecommendationRanker } from '@pkg/recommender';
+import express from 'express';
+import { createListDatasetImportDiagnosticsController } from '../domains/dataset-imports/controllers/dataset-imports.controller.js';
+import { requestErrorHandler } from '../middlewares/request-logger.middleware.js';
 import { createApp } from './app.js';
 
 const WEB_ORIGIN = 'http://localhost:5173';
@@ -301,7 +304,7 @@ describe('API de perfil anônimo', () => {
 
 describe('API de diagnósticos de importação', () => {
   it('deve bloquear importação sem chave administrativa válida', async () => {
-    const context = await createTestContext();
+    const context = await createTestContext({ datasetImportAdminToken: '' });
 
     try {
       const unavailable = await request(context, '/dataset-uploads');
@@ -375,6 +378,58 @@ describe('API de diagnósticos de importação', () => {
       assert.equal(missingUpload.status, 404);
     } finally {
       await context.dispose();
+    }
+  });
+
+  it('deve devolver JSON de erro quando a consulta de diagnósticos falhar', async () => {
+    const app = express();
+    const queue: DatasetImportQueue = {
+      enqueue: async () => { throw new Error('Não utilizado neste teste.'); },
+      findUpload: async () => null,
+      listDiagnostics: async () => { throw new Error('LibSQL indisponível.'); },
+      listJobs: async () => [],
+      listUploads: async () => [],
+      processPending: async () => undefined,
+    };
+
+    app.get('/dataset-uploads/:uploadId/diagnostics', createListDatasetImportDiagnosticsController(queue));
+    app.use(requestErrorHandler);
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address() as AddressInfo;
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/dataset-uploads/upload-falhou/diagnostics`);
+
+      assert.equal(response.status, 500);
+      assert.deepEqual(await response.json(), { error: 'Nao foi possivel concluir a requisicao.' });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  });
+});
+
+describe('Inicialização do BFF', () => {
+  it('deve manter o health disponível quando a limpeza inicial falhar', async () => {
+    const app = createApp({
+      databaseClient: {
+        batch: async () => { throw new Error('LibSQL indisponível.'); },
+      } as unknown as Client,
+      processDatasetQueue: false,
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address() as AddressInfo;
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/health`);
+
+      assert.equal(response.status, 200);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     }
   });
 });

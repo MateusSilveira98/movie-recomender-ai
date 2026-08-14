@@ -8,8 +8,11 @@
     "import-dataset": {
       "command": "tsx --tsconfig tsconfig.base.json packages/recommender/src/dataset-import.worker.ts"
     },
+    "integration": {
+      "command": "tsx --tsconfig tsconfig.base.json packages/recommender/src/dataset-import.integration.ts"
+    },
     "test": {
-      "command": "tsx --tsconfig tsconfig.base.json --test packages/recommender/src/index.spec.ts packages/recommender/src/workers/dataset/application/dataset-import-queue.service.spec.ts packages/recommender/src/workers/dataset/infrastructure/data/csv.reader.spec.ts packages/recommender/src/workers/dataset/domain/dataset-import-dependencies.service.spec.ts packages/recommender/src/workers/dataset/domain/dataset-upload-status.service.spec.ts"
+      "command": "tsx --tsconfig tsconfig.base.json --test packages/recommender/src/index.spec.ts packages/recommender/src/workers/dataset/application/dataset-import-queue.service.spec.ts packages/recommender/src/workers/dataset/application/dataset-import-write-executor.service.spec.ts packages/recommender/src/workers/dataset/infrastructure/data/csv.reader.spec.ts packages/recommender/src/workers/dataset/infrastructure/data/dataset-import-chunk-materializer.service.spec.ts packages/recommender/src/workers/dataset/infrastructure/storage/dataset-import-status.store.spec.ts packages/recommender/src/workers/dataset/infrastructure/data/dataset-import-chunk-planner.service.spec.ts packages/recommender/src/workers/dataset/infrastructure/persistence/dataset-import-chunks.repository.spec.ts packages/recommender/src/workers/dataset/infrastructure/persistence/dataset-import-rating-chunk-stats.repository.spec.ts packages/recommender/src/workers/dataset/domain/dataset-import-dependencies.service.spec.ts packages/recommender/src/workers/dataset/domain/dataset-upload-status.service.spec.ts"
     },
     "typecheck": {
       "command": "tsc -p packages/recommender/tsconfig.json --noEmit"

@@ -8,6 +8,8 @@ import type {
 } from '../domain/dataset-import-queue.types.js';
 import { resolveMissingDatasetDependencies } from '../domain/dataset-import-dependencies.service.js';
 import type { DatasetImportGateway, StoredDatasetImportJob } from './ports/dataset-import-gateway.port.js';
+import type { DatasetImportChunkDispatcher } from './ports/dataset-import-chunk-dispatcher.port.js';
+import { immediateDatasetImportWriteExecutor, type DatasetImportWriteExecutor } from './dataset-import-write-executor.service.js';
 
 export interface DatasetImportQueue {
   enqueue(upload: DatasetUploadInput): Promise<DatasetUpload>;
@@ -18,14 +20,25 @@ export interface DatasetImportQueue {
   processPending(): Promise<void>;
 }
 
-export function createDatasetImportQueue(gateway: DatasetImportGateway): DatasetImportQueue {
+export interface DatasetImportQueueOptions {
+  autoProcess?: boolean;
+  writeExecutor?: DatasetImportWriteExecutor;
+}
+
+export function createDatasetImportQueue(
+  gateway: DatasetImportGateway,
+  chunkDispatcher?: DatasetImportChunkDispatcher,
+  { autoProcess = true, writeExecutor = immediateDatasetImportWriteExecutor }: DatasetImportQueueOptions = {},
+): DatasetImportQueue {
   let isProcessing = false;
   let recoveredJobs = false;
 
   return {
     async enqueue(upload) {
       const queuedUpload = await gateway.createUpload(upload);
-      void processPendingSafely();
+      if (autoProcess) {
+        void processPendingSafely();
+      }
       return queuedUpload;
     },
     findUpload: (uploadId) => gateway.findUpload(uploadId),
@@ -39,17 +52,7 @@ export function createDatasetImportQueue(gateway: DatasetImportGateway): Dataset
     if (isProcessing) return;
     isProcessing = true;
     try {
-      if (!recoveredJobs) {
-        await gateway.requeueInterruptedJobs();
-        await gateway.requeueWaitingJobs('movies');
-        await gateway.requeueWaitingJobs('links');
-        recoveredJobs = true;
-      }
-      let job = await gateway.claimNextJob();
-      while (job) {
-        await processJob(job);
-        job = await gateway.claimNextJob();
-      }
+      await writeExecutor.execute(processPending);
     } catch (error) {
       gateway.reportProcessorFailure(error);
     } finally {
@@ -57,11 +60,33 @@ export function createDatasetImportQueue(gateway: DatasetImportGateway): Dataset
     }
   }
 
+  async function processPending(): Promise<void> {
+    if (!recoveredJobs) {
+      await gateway.requeueInterruptedJobs();
+      recoveredJobs = true;
+    }
+    await gateway.reconcileStagedImports();
+    let job = await gateway.claimNextJob();
+    while (job) {
+      await processJob(job);
+      job = await gateway.claimNextJob();
+    }
+  }
+
   async function processJob(job: StoredDatasetImportJob): Promise<void> {
     const diagnostics = gateway.createDiagnostics(job.uploadId);
     try {
-      await gateway.clearDiagnostics(job.uploadId);
-      await gateway.clearRatingKeys(job.uploadId);
+      if (job.attemptCount === 1) {
+        await gateway.clearDiagnostics(job.uploadId);
+        await gateway.clearRatingKeys(job.uploadId);
+      }
+      const existingChunks = await gateway.listChunks(job.id);
+      if (chunkDispatcher && existingChunks.length > 0) {
+        if (!existingChunks.every((chunk) => chunk.status === 'completed')) {
+          await Promise.all(existingChunks.map((chunk) => chunkDispatcher.publish({ chunkId: chunk.id, jobId: job.id, type: job.type })));
+        }
+        return;
+      }
       if (!job.storagePath) {
         await diagnostics.record(missingFileDiagnostic());
         await failWithDiagnostics(job, diagnostics, 'Arquivo temporario indisponivel.');
@@ -72,18 +97,28 @@ export function createDatasetImportQueue(gateway: DatasetImportGateway): Dataset
         await gateway.deleteTemporaryFile(job.storagePath);
         return;
       }
-      const dependencies = await getMissingDependencies(job.type);
-      if (dependencies.length > 0) {
-        await gateway.waitForDependencies(job, dependencies);
-        return;
+      if (job.type === 'links' || job.type === 'ratings' || chunkDispatcher) {
+        await gateway.createCheckpoints(job);
+        const chunks = await gateway.listChunks(job.id);
+
+        if (chunks.length > 0 && chunks.every((chunk) => chunk.status === 'completed')) return;
+
+        if (chunkDispatcher && chunks.length > 0) {
+          await Promise.all(chunks.map((chunk) => chunkDispatcher.publish({ chunkId: chunk.id, jobId: job.id, type: job.type })));
+          return;
+        }
+      }
+      if (!chunkDispatcher) {
+        const dependencies = await getMissingDependencies(job.type);
+        if (dependencies.length > 0) {
+          await gateway.waitForDependencies(job, dependencies);
+          return;
+        }
       }
       const result = await gateway.importFile(job, diagnostics);
       await diagnostics.flush();
       await gateway.completeJob(job, result);
       await gateway.deleteTemporaryFile(job.storagePath);
-      if (result.summary.imported > 0 && (job.type === 'movies' || job.type === 'links')) {
-        await gateway.requeueWaitingJobs(job.type);
-      }
     } catch (error) {
       await diagnostics.record(processingFailedDiagnostic());
       await failWithDiagnostics(job, diagnostics, 'Falha ao processar o arquivo enviado.');
@@ -100,6 +135,7 @@ export function createDatasetImportQueue(gateway: DatasetImportGateway): Dataset
   async function getMissingDependencies(type: import('../domain/dataset-import-queue.types.js').DatasetFileType): Promise<DatasetDependency[]> {
     return resolveMissingDatasetDependencies(type, await gateway.getDependencyCounts(type));
   }
+
 }
 
 function missingFileDiagnostic() {

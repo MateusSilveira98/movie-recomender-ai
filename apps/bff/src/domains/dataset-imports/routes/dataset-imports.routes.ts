@@ -14,7 +14,7 @@ export function createDatasetImportsRoutes(datasetImportQueue: DatasetImportQueu
   const router = express.Router();
   const requireDatasetImportAccess = createDatasetImportAccessMiddleware(adminToken);
 
-  router.post('/dataset-uploads', requireDatasetImportAccess, uploadDatasetFile, createDatasetUploadController(datasetImportQueue));
+  router.post('/dataset-uploads', requireDatasetImportAccess, uploadDatasetFile, createDatasetUploadController());
   router.get('/dataset-uploads', requireDatasetImportAccess, createListDatasetUploadsController(datasetImportQueue));
   router.get('/dataset-uploads/:uploadId/diagnostics', requireDatasetImportAccess, createListDatasetImportDiagnosticsController(datasetImportQueue));
   router.get('/dataset-uploads/:uploadId', requireDatasetImportAccess, createGetDatasetUploadController(datasetImportQueue));

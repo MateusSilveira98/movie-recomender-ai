@@ -3,10 +3,12 @@ import { parsePositiveInteger, readCsvRecords, type CsvRecord } from '../../data
 import { createDatasetDiagnostic, validateDatasetRecord } from '../../validation/dataset-csv.validator.js';
 import type { DatasetImportDiagnosticsCollector } from '../dataset-import-diagnostics.repository.js';
 import { reserveDatasetImportRatingKeys } from '../dataset-import-rating-keys.repository.js';
+import type { StagedRatingRecord } from '../dataset-import-rating-records.repository.js';
 import { flushStatements } from '../sql-statement.writer.js';
 import type { LinkRecord, MovieRatingStats, SqlStatement } from '../../../domain/dataset.types.js';
 
 const RATING_KEY_BATCH_SIZE = 1000;
+const RATING_STATS_BATCH_SIZE = 100;
 
 export async function importRatingStats(
   client: Client,
@@ -16,14 +18,43 @@ export async function importRatingStats(
   diagnostics: DatasetImportDiagnosticsCollector,
   uploadId: string,
 ): Promise<RatingsImportResult> {
+  const importResult = await collectRatingStats(readCsvRecords(filePath), linksByMovieLensId, knownMovieIds, diagnostics, client, uploadId, uploadId);
+  await persistRatingStats(client, importResult.statsByMovieId.values());
+  return importResult.result;
+}
+
+export async function persistRatingStats(client: Client, statsByMovieId: Iterable<MovieRatingStats>): Promise<void> {
+  const statements: SqlStatement[] = [];
+
+  for (const stats of statsByMovieId) {
+    statements.push(createRatingStatsStatement(stats));
+
+    if (statements.length >= RATING_STATS_BATCH_SIZE) {
+      await flushStatements(client, statements, RATING_STATS_BATCH_SIZE);
+    }
+  }
+
+  await flushStatements(client, statements, RATING_STATS_BATCH_SIZE);
+}
+
+export async function collectRatingStats(
+  records: AsyncIterable<CsvRecord> | Iterable<CsvRecord>,
+  linksByMovieLensId: Map<number, LinkRecord>,
+  knownMovieIds: Set<string>,
+  diagnostics: DatasetImportDiagnosticsCollector,
+  client: Client,
+  uploadId: string,
+  chunkId: string,
+): Promise<CollectedRatingStats> {
   const statsByMovieId = new Map<string, MovieRatingStats>();
   let importedRows = 0;
   let processedRows = 0;
   let rejectedRows = 0;
   let missingDependencyRows = 0;
   const pendingRatings: PendingRating[] = [];
+  const seenRatingKeys = new Set<string>();
 
-  for await (const record of readCsvRecords(filePath)) {
+  for await (const record of records) {
     processedRows += 1;
     const validationIssues = validateDatasetRecord('ratings', record);
 
@@ -81,7 +112,10 @@ export async function importRatingStats(
       continue;
     }
 
-    pendingRatings.push({ movieId, movieLensId, ratingValue, record, timestamp, userId });
+    const ratingKey = `${userId}:${movieLensId}`;
+    const isDuplicate = seenRatingKeys.has(ratingKey);
+    seenRatingKeys.add(ratingKey);
+    pendingRatings.push({ isDuplicate, movieId, movieLensId, ratingValue, record, timestamp, userId });
 
     if (pendingRatings.length >= RATING_KEY_BATCH_SIZE) {
       await reservePendingRatings();
@@ -89,19 +123,6 @@ export async function importRatingStats(
   }
 
   await reservePendingRatings();
-
-  const statements: SqlStatement[] = [];
-
-  for (const stats of statsByMovieId.values()) {
-    statements.push(createRatingStatsStatement(stats));
-
-    if (statements.length >= 200) {
-      await flushStatements(client, statements);
-    }
-  }
-
-  await flushStatements(client, statements);
-  return { importedRows, missingDependencyRows, processedRows, rejectedRows };
 
   async function reservePendingRatings(): Promise<void> {
     if (pendingRatings.length === 0) {
@@ -112,11 +133,12 @@ export async function importRatingStats(
     const accepted = await reserveDatasetImportRatingKeys(
       client,
       uploadId,
+      chunkId,
       ratings.map((rating) => ({ movieLensId: rating.movieLensId, userId: rating.userId })),
     );
 
     for (const [index, rating] of ratings.entries()) {
-      if (!accepted[index]) {
+      if (rating.isDuplicate || !accepted[index]) {
         await diagnostics.record(createDatasetDiagnostic(rating.record, {
           category: 'integrity',
           field: 'movieId',
@@ -135,6 +157,11 @@ export async function importRatingStats(
       importedRows += 1;
     }
   }
+
+  return {
+    result: { importedRows, missingDependencyRows, processedRows, rejectedRows },
+    statsByMovieId,
+  };
 }
 
 export interface RatingsImportResult {
@@ -144,7 +171,63 @@ export interface RatingsImportResult {
   rejectedRows: number;
 }
 
+export interface CollectedRatingStats {
+  result: RatingsImportResult;
+  statsByMovieId: ReadonlyMap<string, MovieRatingStats>;
+}
+
+export async function collectRatingChunkRecords(
+  records: AsyncIterable<CsvRecord> | Iterable<CsvRecord>,
+  diagnostics: DatasetImportDiagnosticsCollector,
+  client: Client,
+  uploadId: string,
+  chunkId: string,
+  seen = new Set<string>(),
+): Promise<{ records: StagedRatingRecord[]; result: RatingsImportResult }> {
+  const staged: StagedRatingRecord[] = [];
+  const pending: Array<StagedRatingRecord & { duplicate: boolean; record: CsvRecord }> = [];
+  let processedRows = 0;
+  let rejectedRows = 0;
+
+  for await (const record of records) {
+    processedRows += 1;
+    const issues = validateDatasetRecord('ratings', record);
+    if (issues.length > 0) { await recordDiagnostics(diagnostics, issues); rejectedRows += 1; continue; }
+    const movieLensId = parsePositiveInteger(record.row.movieId);
+    const userId = parsePositiveInteger(record.row.userId);
+    const ratedAt = parsePositiveInteger(record.row.timestamp);
+    const rating = Number(record.row.rating);
+    if (movieLensId === null || userId === null || ratedAt === null || !Number.isFinite(rating)) {
+      await diagnostics.record(createDatasetDiagnostic(record, { category: 'validation', field: 'rating', message: 'Nao foi possivel normalizar a avaliacao.', reason: 'invalid_field', ruleCode: 'rating_normalization', value: record.row.rating ?? null }));
+      rejectedRows += 1;
+      continue;
+    }
+    const key = `${userId}:${movieLensId}`;
+    pending.push({ duplicate: seen.has(key), lineEnd: record.lineEnd, lineStart: record.lineStart, movieLensId, ratedAt, rating, record, userId });
+    seen.add(key);
+    if (pending.length >= RATING_KEY_BATCH_SIZE) await reservePending();
+  }
+  await reservePending();
+
+  async function reservePending(): Promise<void> {
+    if (pending.length === 0) return;
+    const candidates = pending.splice(0, pending.length);
+    const accepted = await reserveDatasetImportRatingKeys(client, uploadId, chunkId, candidates.map(({ movieLensId, userId }) => ({ movieLensId, userId })));
+    for (const [index, candidate] of candidates.entries()) {
+      if (candidate.duplicate || !accepted[index]) {
+        await diagnostics.record(createDatasetDiagnostic(candidate.record, { category: 'integrity', field: 'movieId', message: 'O usuario possui mais de uma avaliacao para o mesmo filme no upload.', reason: 'duplicate_value', ruleCode: 'duplicate_user_movie_rating', value: candidate.record.row.movieId ?? null }));
+        rejectedRows += 1;
+        continue;
+      }
+      staged.push(candidate);
+    }
+  }
+
+  return { records: staged, result: { importedRows: staged.length, missingDependencyRows: 0, processedRows, rejectedRows } };
+}
+
 interface PendingRating {
+  isDuplicate: boolean;
   movieId: string;
   movieLensId: number;
   ratingValue: number;

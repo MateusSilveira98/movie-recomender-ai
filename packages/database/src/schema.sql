@@ -162,10 +162,73 @@ CREATE TABLE IF NOT EXISTS dataset_import_diagnostic_summaries (
 
 CREATE TABLE IF NOT EXISTS dataset_import_rating_keys (
   upload_id TEXT NOT NULL,
+  chunk_id TEXT NOT NULL,
   user_id INTEGER NOT NULL,
   movie_lens_id INTEGER NOT NULL,
   PRIMARY KEY (upload_id, user_id, movie_lens_id),
-  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE
+  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE,
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_link_chunk_records (
+  chunk_id TEXT NOT NULL,
+  line_start INTEGER NOT NULL,
+  line_end INTEGER NOT NULL,
+  movie_lens_id INTEGER NOT NULL,
+  tmdb_id INTEGER NOT NULL,
+  PRIMARY KEY (chunk_id, movie_lens_id),
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_link_keys (
+  upload_id TEXT NOT NULL,
+  chunk_id TEXT NOT NULL,
+  movie_lens_id INTEGER NOT NULL,
+  tmdb_id INTEGER NOT NULL,
+  PRIMARY KEY (upload_id, movie_lens_id),
+  UNIQUE (upload_id, tmdb_id),
+  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE,
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_movie_keys (
+  upload_id TEXT NOT NULL,
+  key_type TEXT NOT NULL CHECK (key_type IN ('movie_id', 'imdb_id', 'movie_lens_id')),
+  key_value TEXT NOT NULL,
+  chunk_id TEXT NOT NULL,
+  movie_id TEXT NOT NULL,
+  PRIMARY KEY (upload_id, key_type, key_value),
+  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE,
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_movie_chunk_records (
+  chunk_id TEXT NOT NULL,
+  line_start INTEGER NOT NULL,
+  line_end INTEGER NOT NULL,
+  movie_id TEXT NOT NULL,
+  record_json TEXT NOT NULL,
+  PRIMARY KEY (chunk_id, movie_id),
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_credit_keys (
+  upload_id TEXT NOT NULL,
+  movie_id TEXT NOT NULL,
+  chunk_id TEXT NOT NULL,
+  PRIMARY KEY (upload_id, movie_id),
+  FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE,
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_credit_chunk_records (
+  chunk_id TEXT NOT NULL,
+  line_start INTEGER NOT NULL,
+  line_end INTEGER NOT NULL,
+  movie_id TEXT NOT NULL,
+  record_json TEXT NOT NULL,
+  PRIMARY KEY (chunk_id, movie_id),
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS dataset_import_jobs (
@@ -179,6 +242,59 @@ CREATE TABLE IF NOT EXISTS dataset_import_jobs (
   started_at TEXT,
   completed_at TEXT,
   FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_chunks (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL CHECK (sequence >= 0),
+  line_start INTEGER NOT NULL CHECK (line_start > 0),
+  line_end INTEGER NOT NULL CHECK (line_end >= line_start),
+  record_count INTEGER NOT NULL CHECK (record_count > 0),
+  content_hash TEXT NOT NULL,
+  payload_path TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  error_message TEXT,
+  processed_rows INTEGER NOT NULL DEFAULT 0,
+  imported_rows INTEGER NOT NULL DEFAULT 0,
+  rejected_rows INTEGER NOT NULL DEFAULT 0,
+  missing_dependency_rows INTEGER NOT NULL DEFAULT 0,
+  rating_stats_materialized_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  completed_at TEXT,
+  UNIQUE (job_id, sequence),
+  FOREIGN KEY (job_id) REFERENCES dataset_import_jobs (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_rating_chunk_stats (
+  chunk_id TEXT NOT NULL,
+  movie_id TEXT NOT NULL,
+  movie_lens_id INTEGER NOT NULL,
+  rating_count INTEGER NOT NULL CHECK (rating_count > 0),
+  rating_sum REAL NOT NULL CHECK (rating_sum >= 0),
+  rating_min REAL NOT NULL,
+  rating_max REAL NOT NULL,
+  rating_mean REAL NOT NULL,
+  rating_m2 REAL NOT NULL CHECK (rating_m2 >= 0),
+  first_rating_at TEXT,
+  last_rating_at TEXT,
+  PRIMARY KEY (chunk_id, movie_id),
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE,
+  FOREIGN KEY (movie_id) REFERENCES movies (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dataset_import_rating_records (
+  user_id INTEGER NOT NULL,
+  movie_lens_id INTEGER NOT NULL,
+  rating REAL NOT NULL,
+  rated_at INTEGER NOT NULL,
+  chunk_id TEXT NOT NULL,
+  line_start INTEGER NOT NULL,
+  line_end INTEGER NOT NULL,
+  PRIMARY KEY (user_id, movie_lens_id),
+  FOREIGN KEY (chunk_id) REFERENCES dataset_import_chunks (id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -301,8 +417,16 @@ CREATE INDEX IF NOT EXISTS idx_dataset_import_diagnostics_upload_line ON dataset
 CREATE INDEX IF NOT EXISTS idx_dataset_import_diagnostics_summary ON dataset_import_diagnostics (upload_id, diagnostic_category, rule_code, field_name);
 CREATE INDEX IF NOT EXISTS idx_dataset_import_diagnostic_summaries_upload ON dataset_import_diagnostic_summaries (upload_id, diagnostic_category, reason, rule_code);
 CREATE INDEX IF NOT EXISTS idx_dataset_import_rating_keys_upload ON dataset_import_rating_keys (upload_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_movie_keys_upload ON dataset_import_movie_keys (upload_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_credit_keys_upload ON dataset_import_credit_keys (upload_id);
 CREATE INDEX IF NOT EXISTS idx_dataset_import_jobs_status_created_at ON dataset_import_jobs (status, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_import_jobs_single_processing ON dataset_import_jobs (status) WHERE status = 'processing';
+CREATE INDEX IF NOT EXISTS idx_dataset_import_chunks_job_sequence ON dataset_import_chunks (job_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_chunks_status_created_at ON dataset_import_chunks (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_chunks_rating_stats_pending ON dataset_import_chunks (job_id, rating_stats_materialized_at, sequence);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_rating_chunk_stats_movie ON dataset_import_rating_chunk_stats (movie_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_rating_records_chunk_movie ON dataset_import_rating_records (chunk_id, movie_lens_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_import_rating_records_movie ON dataset_import_rating_records (movie_lens_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_status_created_at ON sessions (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_session_preferences_session_id ON session_preferences (session_id);
 CREATE INDEX IF NOT EXISTS idx_session_movie_feedback_session_id ON session_movie_feedback (session_id);

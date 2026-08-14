@@ -5,11 +5,262 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { createClient } from '@libsql/client';
 import { createDatasetImportQueue } from './dataset-import-queue.service.js';
-import { createSqlDatasetImportGateway } from '../infrastructure/dataset-import-queue.adapter.js';
+import { createSqlDatasetImportCreditChunkHandler, createSqlDatasetImportGateway, createSqlDatasetImportLinkChunkHandler, createSqlDatasetImportMovieChunkHandler, createSqlDatasetImportRatingChunkHandler } from '../infrastructure/dataset-import-queue.adapter.js';
 import { createDatasetImportDiagnosticsCollector, MAX_PERSISTED_DIAGNOSTICS } from '../infrastructure/persistence/dataset-import-diagnostics.repository.js';
 import { createDatasetUploadWithJob } from '../infrastructure/persistence/dataset-import-queue.repository.js';
+import { listDatasetImportChunks } from '../infrastructure/persistence/dataset-import-chunks.repository.js';
+import { listDatasetImportRatingChunkStats } from '../infrastructure/persistence/dataset-import-rating-chunk-stats.repository.js';
+import type { DatasetImportChunkMessage } from './ports/dataset-import-chunk-dispatcher.port.js';
 
 describe('fila de importacao do dataset', () => {
+  it('deve despachar os chunks de ratings sem processá-los no job-pai', async () => {
+    const context = await createTestContext();
+
+    try {
+      await seedMovie(context.client, '10');
+      await context.client.execute({
+        sql: 'INSERT INTO dataset_movie_links (movie_lens_id, tmdb_id) VALUES (?, ?)',
+        args: [1, '10'],
+      });
+      const content = 'userId,movieId,rating,timestamp\n2,1,4,100\n';
+      const filePath = await createCsv(context.directory, 'ratings.csv', content);
+      const upload = await createDatasetUploadWithJob(context.client, {
+        fileName: 'ratings.csv', sizeBytes: content.length, storagePath: filePath, type: 'ratings',
+      });
+      const messages: DatasetImportChunkMessage[] = [];
+      const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), {
+        publish: async (message) => { messages.push(message); },
+      });
+
+      await queue.processPending();
+
+      const chunks = await listDatasetImportChunks(context.client, upload.jobId);
+      const pendingUpload = await queue.findUpload(upload.id);
+      assert.equal(messages.length, 1);
+      assert.equal(messages[0]?.jobId, upload.jobId);
+      assert.equal(messages[0]?.chunkId, chunks[0]?.id);
+      assert.equal(messages[0]?.type, 'ratings');
+      assert.equal(chunks[0]?.status, 'queued');
+      assert.equal(pendingUpload?.status, 'processing');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  it('deve concluir o upload fora do consumo da mensagem do chunk', async () => {
+    const context = await createTestContext();
+
+    try {
+      await seedMovie(context.client, '10');
+      await context.client.execute({
+        sql: 'INSERT INTO dataset_movie_links (movie_lens_id, tmdb_id) VALUES (?, ?)',
+        args: [1, '10'],
+      });
+      const content = 'userId,movieId,rating,timestamp\n2,1,4,100\n';
+      const filePath = await createCsv(context.directory, 'ratings.csv', content);
+      const upload = await createDatasetUploadWithJob(context.client, {
+        fileName: 'ratings.csv', sizeBytes: content.length, storagePath: filePath, type: 'ratings',
+      });
+      const messages: DatasetImportChunkMessage[] = [];
+      const gateway = createSqlDatasetImportGateway(context.client);
+      const queue = createDatasetImportQueue(gateway, {
+        publish: async (message) => { messages.push(message); },
+      });
+
+      await queue.processPending();
+      await createSqlDatasetImportRatingChunkHandler(context.client).process(messages[0]!);
+      await gateway.reconcileStagedImports();
+
+      const completedUpload = await queue.findUpload(upload.id);
+      const stats = await context.client.execute({ sql: 'SELECT rating_count FROM movie_ratings_stats WHERE movie_id = ?', args: ['10'] });
+      const transientKeys = await context.client.execute('SELECT COUNT(*) AS count FROM dataset_import_rating_keys');
+      assert.equal(completedUpload?.status, 'success');
+      assert.equal(stats.rows[0]?.rating_count, 1);
+      assert.equal(transientKeys.rows[0]?.count, 0);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  it('deve concluir links ao processar o chunk na fila específica', async () => {
+    const context = await createTestContext();
+
+    try {
+      const content = 'movieId,imdbId,tmdbId\n1,0114709,10\n';
+      const filePath = await createCsv(context.directory, 'links.csv', content);
+      const upload = await createDatasetUploadWithJob(context.client, {
+        fileName: 'links.csv', sizeBytes: content.length, storagePath: filePath, type: 'links',
+      });
+      const messages: DatasetImportChunkMessage[] = [];
+      const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), {
+        publish: async (message) => { messages.push(message); },
+      });
+
+      await queue.processPending();
+      await createSqlDatasetImportLinkChunkHandler(context.client).process(messages[0]!);
+
+      const completedUpload = await queue.findUpload(upload.id);
+      const links = await context.client.execute('SELECT movie_lens_id, tmdb_id FROM dataset_movie_links');
+      assert.equal(messages[0]?.type, 'links');
+      assert.equal(completedUpload?.status, 'success');
+      assert.equal(links.rows[0]?.movie_lens_id, 1);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  it('deve promover movies apenas após processar o chunk na fila', async () => {
+    const context = await createTestContext();
+    try {
+      const content = 'adult,belongs_to_collection,budget,genres,homepage,id,imdb_id,original_language,original_title,overview,popularity,poster_path,production_companies,production_countries,release_date,revenue,runtime,spoken_languages,status,tagline,title,video,vote_average,vote_count\nFalse,,0,"[{""id"":2,""name"":""Novo""}]",,10,,pt,Título,Resumo,0,,[],[],2024-01-01,0,90,[],Released,,Título,False,0,0\n';
+      const filePath = await createCsv(context.directory, 'movies.csv', content);
+      const upload = await createDatasetUploadWithJob(context.client, { fileName: 'movies.csv', sizeBytes: content.length, storagePath: filePath, type: 'movies' });
+      const messages: DatasetImportChunkMessage[] = [];
+      const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), { publish: async (message) => { messages.push(message); } });
+
+      await queue.processPending();
+      assert.equal((await context.client.execute('SELECT COUNT(*) AS count FROM movies')).rows[0]?.count, 0);
+      await createSqlDatasetImportMovieChunkHandler(context.client).process(messages[0]!);
+
+      const uploadAfterPromotion = await queue.findUpload(upload.id);
+      const [movie, genres, feature] = await Promise.all([
+        context.client.execute({ sql: 'SELECT title FROM movies WHERE id = ?', args: ['10'] }),
+        context.client.execute({ sql: 'SELECT genre_name FROM movie_genres WHERE movie_id = ?', args: ['10'] }),
+        context.client.execute({ sql: 'SELECT summary_text FROM movie_features WHERE movie_id = ?', args: ['10'] }),
+      ]);
+      assert.equal(messages[0]?.type, 'movies');
+      assert.equal(uploadAfterPromotion?.status, 'success');
+      assert.equal(movie.rows[0]?.title, 'Título');
+      assert.equal(genres.rows[0]?.genre_name, 'Novo');
+      assert.equal(feature.rows[0]?.summary_text, 'Resumo');
+    } finally { await context.dispose(); }
+  });
+
+  it('deve promover filmes em mais de um sublote de escrita', async () => {
+    const context = await createTestContext();
+    try {
+      const header = 'adult,belongs_to_collection,budget,genres,homepage,id,imdb_id,original_language,original_title,overview,popularity,poster_path,production_companies,production_countries,release_date,revenue,runtime,spoken_languages,status,tagline,title,video,vote_average,vote_count';
+      const rows = Array.from({ length: 101 }, (_, index) => {
+        const id = index + 1;
+        return `False,,0,[],,${id},,pt,Título ${id},Resumo ${id},0,,[],[],2024-01-01,0,90,[],Released,,Título ${id},False,0,0`;
+      });
+      const content = `${header}\n${rows.join('\n')}\n`;
+      const filePath = await createCsv(context.directory, 'movies-batches.csv', content);
+      const upload = await createDatasetUploadWithJob(context.client, { fileName: 'movies-batches.csv', sizeBytes: content.length, storagePath: filePath, type: 'movies' });
+      const messages: DatasetImportChunkMessage[] = [];
+      const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), { publish: async (message) => { messages.push(message); } });
+
+      await queue.processPending();
+      await createSqlDatasetImportMovieChunkHandler(context.client).process(messages[0]!);
+
+      const [completedUpload, movies] = await Promise.all([
+        queue.findUpload(upload.id),
+        context.client.execute('SELECT COUNT(*) AS count FROM movies'),
+      ]);
+      assert.equal(completedUpload?.status, 'success');
+      assert.equal(movies.rows[0]?.count, 101);
+    } finally { await context.dispose(); }
+  });
+
+  it('deve reconciliar credits em staging contra o filme promovido', async () => {
+    const context = await createTestContext();
+    try {
+      await seedMovie(context.client, '10');
+      const content = 'id,cast,crew\n10,"[{\'credit_id\':\'cast-1\',\'id\':1,\'name\':\'Pessoa\',\'order\':0,\'gender\':0}]","[{\'credit_id\':\'crew-1\',\'id\':2,\'name\':\'Diretor\',\'department\':\'Directing\',\'job\':\'Director\',\'gender\':0}]"\n';
+      const filePath = await createCsv(context.directory, 'credits.csv', content);
+      const upload = await createDatasetUploadWithJob(context.client, { fileName: 'credits.csv', sizeBytes: content.length, storagePath: filePath, type: 'credits' });
+      const messages: DatasetImportChunkMessage[] = [];
+      const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), { publish: async (message) => { messages.push(message); } });
+
+      await queue.processPending();
+      await createSqlDatasetImportCreditChunkHandler(context.client).process(messages[0]!);
+
+      const completed = await queue.findUpload(upload.id);
+      const [cast, crew] = await Promise.all([
+        context.client.execute({ sql: 'SELECT person_name FROM movie_cast WHERE movie_id = ?', args: ['10'] }),
+        context.client.execute({ sql: 'SELECT person_name FROM movie_crew WHERE movie_id = ?', args: ['10'] }),
+      ]);
+      assert.equal(messages[0]?.type, 'credits');
+      assert.equal(completed?.status, 'success');
+      assert.equal(cast.rows[0]?.person_name, 'Pessoa');
+      assert.equal(crew.rows[0]?.person_name, 'Diretor');
+    } finally { await context.dispose(); }
+  });
+
+  it('deve reconciliar uploads enviados fora de ordem', async () => {
+    const context = await createTestContext();
+    try {
+      const messages: DatasetImportChunkMessage[] = [];
+      const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), { publish: async (message) => { messages.push(message); } }, { autoProcess: false });
+      const credits = 'id,cast,crew\n10,"[{\'credit_id\':\'cast-1\',\'id\':1,\'name\':\'Pessoa\',\'order\':0,\'gender\':0}]",[]\n';
+      const ratings = 'userId,movieId,rating,timestamp\n2,1,4,100\n';
+      const links = 'movieId,imdbId,tmdbId\n1,,10\n';
+      const movies = 'adult,belongs_to_collection,budget,genres,homepage,id,imdb_id,original_language,original_title,overview,popularity,poster_path,production_companies,production_countries,release_date,revenue,runtime,spoken_languages,status,tagline,title,video,vote_average,vote_count\nFalse,,0,[], ,10,,pt,Título,Resumo,0,,[],[],2024-01-01,0,90,[],Released,,Título,False,0,0\n';
+
+      const creditUpload = await queue.enqueue({ fileName: 'credits.csv', sizeBytes: credits.length, storagePath: await createCsv(context.directory, 'credits.csv', credits), type: 'credits' });
+      await queue.processPending();
+      await createSqlDatasetImportCreditChunkHandler(context.client).process(messages.pop()!);
+      const ratingUpload = await queue.enqueue({ fileName: 'ratings.csv', sizeBytes: ratings.length, storagePath: await createCsv(context.directory, 'ratings.csv', ratings), type: 'ratings' });
+      await queue.processPending();
+      await createSqlDatasetImportRatingChunkHandler(context.client).process(messages.pop()!);
+      const linkUpload = await queue.enqueue({ fileName: 'links.csv', sizeBytes: links.length, storagePath: await createCsv(context.directory, 'links.csv', links), type: 'links' });
+      await queue.processPending();
+      await createSqlDatasetImportLinkChunkHandler(context.client).process(messages.pop()!);
+      const movieUpload = await queue.enqueue({ fileName: 'movies.csv', sizeBytes: movies.length, storagePath: await createCsv(context.directory, 'movies.csv', movies), type: 'movies' });
+      await queue.processPending();
+      await createSqlDatasetImportMovieChunkHandler(context.client).process(messages.pop()!);
+
+      const [creditStatus, ratingStatus, linkStatus, movieStatus, cast, stats] = await Promise.all([
+        queue.findUpload(creditUpload.id), queue.findUpload(ratingUpload.id), queue.findUpload(linkUpload.id), queue.findUpload(movieUpload.id),
+        context.client.execute("SELECT COUNT(*) AS count FROM movie_cast WHERE movie_id = '10'"),
+        context.client.execute("SELECT rating_count FROM movie_ratings_stats WHERE movie_id = '10'"),
+      ]);
+      assert.equal(creditStatus?.status, 'partial_error');
+      assert.equal(creditStatus?.summary.waitingDependencies, 0);
+      assert.equal(ratingStatus?.status, 'partial_error');
+      assert.equal(ratingStatus?.summary.waitingDependencies, 0);
+      assert.equal(linkStatus?.status, 'success');
+      assert.equal(movieStatus?.status, 'success');
+      assert.equal(cast.rows[0]?.count, 1);
+      assert.equal(stats.rows[0]?.rating_count, 1);
+    } finally { await context.dispose(); }
+  });
+
+  it('deve falhar o upload quando o chunk excede as tentativas', async () => {
+    const context = await createTestContext();
+
+    try {
+      await seedMovie(context.client, '10');
+      await context.client.execute({
+        sql: 'INSERT INTO dataset_movie_links (movie_lens_id, tmdb_id) VALUES (?, ?)',
+        args: [1, '10'],
+      });
+      const content = 'userId,movieId,rating,timestamp\n2,1,4,100\n';
+      const filePath = await createCsv(context.directory, 'ratings.csv', content);
+      const upload = await createDatasetUploadWithJob(context.client, {
+        fileName: 'ratings.csv', sizeBytes: content.length, storagePath: filePath, type: 'ratings',
+      });
+      const messages: DatasetImportChunkMessage[] = [];
+      const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), {
+        publish: async (message) => { messages.push(message); },
+      });
+
+      await queue.processPending();
+      const chunks = await listDatasetImportChunks(context.client, upload.jobId);
+      await writeFile(chunks[0]!.payloadPath, 'conteúdo corrompido\n');
+      const handler = createSqlDatasetImportRatingChunkHandler(context.client);
+      await assert.rejects(handler.process(messages[0]!));
+      await handler.fail(messages[0]!);
+
+      const failedUpload = await queue.findUpload(upload.id);
+      const failedChunks = await listDatasetImportChunks(context.client, upload.jobId);
+      assert.equal(failedUpload?.status, 'error');
+      assert.equal(failedChunks[0]?.status, 'failed');
+    } finally {
+      await context.dispose();
+    }
+  });
+
   it('deve importar links sem aguardar filmes', async () => {
     const context = await createTestContext();
 
@@ -61,7 +312,7 @@ describe('fila de importacao do dataset', () => {
     }
   });
 
-  it('deve falhar antes de escrever quando o CSV possui uma linha estruturalmente inválida', async () => {
+  it('deve rejeitar apenas a linha estruturalmente inválida do CSV', async () => {
     const context = await createTestContext();
 
     try {
@@ -72,9 +323,9 @@ describe('fila de importacao do dataset', () => {
       const page = await context.queue.listDiagnostics(upload.id, { limit: 50, offset: 0 });
       const links = await context.client.execute('SELECT COUNT(*) AS count FROM dataset_movie_links');
 
-      assert.equal(completedUpload.status, 'error');
-      assert.equal(completedUpload.summary.imported, 0);
-      assert.equal(links.rows[0]?.count, 0);
+      assert.equal(completedUpload.status, 'partial_error');
+      assert.equal(completedUpload.summary.imported, 1);
+      assert.equal(links.rows[0]?.count, 1);
       assert.deepEqual(page?.diagnostics.map((diagnostic) => ({ field: diagnostic.field, lineStart: diagnostic.lineStart, ruleCode: diagnostic.ruleCode })), [
         { field: null, lineStart: 3, ruleCode: 'invalid_column_count' },
       ]);
@@ -310,6 +561,10 @@ describe('fila de importacao do dataset', () => {
       const page = await context.queue.listDiagnostics(upload.id, { limit: 50, offset: 0 });
       const stats = await context.client.execute({ sql: 'SELECT rating_count, rating_average FROM movie_ratings_stats WHERE movie_id = ?', args: ['10'] });
       const transientKeys = await context.client.execute('SELECT COUNT(*) AS count FROM dataset_import_rating_keys');
+      const chunks = await listDatasetImportChunks(context.client, upload.jobId);
+
+      assert.ok(chunks[0]);
+      const stagedStats = await listDatasetImportRatingChunkStats(context.client, chunks[0].id);
 
       assert.equal(completedUpload.status, 'partial_error');
       assert.deepEqual(completedUpload.summary, { imported: 1, processed: 2, rejected: 1, waitingDependencies: 0 });
@@ -317,6 +572,8 @@ describe('fila de importacao do dataset', () => {
       assert.equal(stats.rows[0]?.rating_average, 4);
       assert.equal(page?.diagnostics[0]?.ruleCode, 'duplicate_user_movie_rating');
       assert.equal(transientKeys.rows[0]?.count, 0);
+      assert.equal(chunks[0]?.status, 'completed');
+      assert.equal(stagedStats[0]?.ratingCount, 1);
     } finally {
       await context.dispose();
     }

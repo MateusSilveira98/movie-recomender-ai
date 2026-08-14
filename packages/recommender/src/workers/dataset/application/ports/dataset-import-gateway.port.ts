@@ -10,6 +10,7 @@ import type {
   DatasetUpload,
   DatasetUploadInput,
 } from '../../domain/dataset-import-queue.types.js';
+import type { DatasetImportChunk } from '../../domain/dataset-import-chunk.types.js';
 
 export interface StoredDatasetImportJob extends DatasetImportJob {
   storagePath: string | null;
@@ -26,6 +27,7 @@ export interface DatasetImportGateway {
   clearDiagnostics(uploadId: string): Promise<void>;
   clearRatingKeys(uploadId: string): Promise<void>;
   completeJob(job: StoredDatasetImportJob, result: DatasetImportResult): Promise<void>;
+  createCheckpoints(job: StoredDatasetImportJob): Promise<void>;
   createDiagnostics(uploadId: string): DatasetImportDiagnosticsCollector;
   createUpload(upload: DatasetUploadInput): Promise<DatasetUpload>;
   deleteTemporaryFile(filePath: string): Promise<void>;
@@ -34,9 +36,11 @@ export interface DatasetImportGateway {
   getDependencyCounts(type: DatasetFileType): Promise<{ links: number; movies: number }>;
   importFile(job: StoredDatasetImportJob, diagnostics: DatasetImportDiagnosticsCollector): Promise<DatasetImportResult>;
   listDiagnostics(uploadId: string, pagination: DatasetDiagnosticsPagination): Promise<DatasetDiagnosticsPage | null>;
+  listChunks(jobId: string): Promise<DatasetImportChunk[]>;
   listJobs(): Promise<DatasetImportJob[]>;
   listUploads(): Promise<DatasetUpload[]>;
   requeueInterruptedJobs(): Promise<void>;
+  reconcileStagedImports(): Promise<void>;
   requeueWaitingJobs(dependency: DatasetDependency['type']): Promise<void>;
   reportJobFailure(job: StoredDatasetImportJob, error: unknown): void;
   reportProcessorFailure(error: unknown): void;

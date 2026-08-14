@@ -43,6 +43,7 @@ services:
         done
 
         mc mb --ignore-existing "local/$${MODEL_STORAGE_BUCKET}"
+        mc mb --ignore-existing "local/$${DATASET_IMPORT_STORAGE_BUCKET}"
 
         cat > /tmp/model-publisher-policy.json <<EOF
         {
@@ -50,7 +51,15 @@ services:
           "Statement": [{
             "Effect": "Allow",
             "Action": ["s3:GetObject", "s3:PutObject"],
-            "Resource": ["arn:aws:s3:::$${MODEL_STORAGE_BUCKET}/$${MODEL_STORAGE_PREFIX}/*"]
+            "Resource": [
+              "arn:aws:s3:::$${MODEL_STORAGE_BUCKET}/$${MODEL_STORAGE_PREFIX}/*",
+              "arn:aws:s3:::$${DATASET_IMPORT_STORAGE_BUCKET}/dataset-imports/*"
+            ]
+          }, {
+            "Effect": "Allow",
+            "Action": ["s3:ListBucket"],
+            "Resource": ["arn:aws:s3:::$${DATASET_IMPORT_STORAGE_BUCKET}"],
+            "Condition": { "StringLike": { "s3:prefix": ["dataset-imports/*"] } }
           }]
         }
         EOF
@@ -82,13 +91,14 @@ services:
       MODEL_READER_SECRET_KEY: ${MODEL_READER_SECRET_KEY:?Defina MODEL_READER_SECRET_KEY no .env.}
       MODEL_STORAGE_BUCKET: ${MODEL_STORAGE_BUCKET:?Defina MODEL_STORAGE_BUCKET no .env.}
       MODEL_STORAGE_PREFIX: ${MODEL_STORAGE_PREFIX:?Defina MODEL_STORAGE_PREFIX no .env.}
+      DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET:?Defina DATASET_IMPORT_STORAGE_BUCKET no .env.}
     depends_on:
       - minio
 
   migrate:
     image: node:22.16.0-alpine
     working_dir: ${WORKSPACE_DIR}
-    command: sh -lc "npm ci --ignore-scripts --no-audit && npm exec -- tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts"
+    command: sh -lc "npm ci --ignore-scripts --no-audit && ./node_modules/.bin/tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts"
     environment:
       DATABASE_URL: ${DATABASE_URL}
     volumes:
@@ -100,7 +110,7 @@ services:
   bff:
     image: node:22.16.0-alpine
     working_dir: ${WORKSPACE_DIR}
-    command: npx tsx watch --tsconfig tsconfig.base.json apps/bff/src/main.ts
+    command: ./node_modules/.bin/tsx watch --tsconfig tsconfig.base.json apps/bff/src/main.ts
     environment:
       PORT: ${BFF_PORT}
       DATABASE_URL: ${DATABASE_URL}
@@ -116,6 +126,13 @@ services:
       MODEL_STORAGE_REGION: ${MODEL_STORAGE_REGION:-}
       MODEL_STORAGE_SECRET_KEY: ${MODEL_READER_SECRET_KEY:-}
       MODEL_VERSION: ${MODEL_VERSION:-}
+      DATASET_IMPORT_STORAGE_ACCESS_KEY: ${MODEL_PUBLISHER_ACCESS_KEY}
+      DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
+      DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
+      DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
+      DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
+      RABBITMQ_URL: ${RABBITMQ_URL}
     ports:
       - "${BFF_HOST_PORT}:${BFF_PORT}"
     volumes:
@@ -127,6 +144,62 @@ services:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
+
+  dataset-import-reader:
+    image: node:22.16.0-alpine
+    working_dir: ${WORKSPACE_DIR}
+    command: ./node_modules/.bin/tsx --tsconfig tsconfig.base.json packages/recommender/src/dataset-import-reader.worker.ts
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      DATASET_IMPORT_STORAGE_ACCESS_KEY: ${MODEL_PUBLISHER_ACCESS_KEY}
+      DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
+      DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
+      DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
+      DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
+      UPLOAD_STORAGE_DIR: ${UPLOAD_STORAGE_DIR}
+    volumes:
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules
+      - upload-data:${UPLOAD_STORAGE_DIR}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
+
+  dataset-import-writer:
+    image: node:22.16.0-alpine
+    working_dir: ${WORKSPACE_DIR}
+    command: ./node_modules/.bin/tsx --tsconfig tsconfig.base.json packages/recommender/src/dataset-import-writer.worker.ts
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      DATASET_IMPORT_STORAGE_ACCESS_KEY: ${MODEL_PUBLISHER_ACCESS_KEY}
+      DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
+      DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
+      DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
+      DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
+      UPLOAD_STORAGE_DIR: ${UPLOAD_STORAGE_DIR}
+    volumes:
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules
+      - upload-data:${UPLOAD_STORAGE_DIR}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
+
+  rabbitmq:
+    image: rabbitmq:4.1.5-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?Defina RABBITMQ_DEFAULT_USER no .env.}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?Defina RABBITMQ_DEFAULT_PASS no .env.}
+    ports:
+      - "${RABBITMQ_AMQP_HOST_PORT:-127.0.0.1:15672}:5672"
+      - "${RABBITMQ_MANAGEMENT_HOST_PORT:-127.0.0.1:15673}:15672"
 
   train:
     build:

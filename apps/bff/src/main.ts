@@ -6,6 +6,7 @@ import { createRecommendationRanker } from '@pkg/recommender';
 async function bootstrap(): Promise<void> {
   const modelRuntime = await loadModelRuntimeFromEnvironment();
   const app = createApp({
+    processDatasetQueue: false,
     mlStatus: modelRuntime.status,
     recommendationRanker: createRecommendationRanker({ modelScoreProvider: modelRuntime.modelScoreProvider }),
   });
