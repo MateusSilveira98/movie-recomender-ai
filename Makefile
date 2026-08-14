@@ -3,7 +3,7 @@ COMPOSE := docker compose $(COMPOSE_FILES)
 BACKEND_PROJECTS := bff,database,recommender,logger
 
 .DEFAULT_GOAL := help
-.PHONY: help build check lint test up up-recreate down ps logs logs-bff logs-database migrate process-queue train
+.PHONY: help build check lint test integration up up-recreate down ps logs logs-bff logs-database logs-worker logs-rabbitmq logs-queue migrate process-queue train
 
 help: ## Exibe os comandos disponíveis para o backend
 	@awk 'BEGIN {FS = ":.*##"}; /^[a-zA-Z0-9_-]+:.*##/ {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -18,6 +18,9 @@ lint: check ## Executa a análise estática disponível (TypeScript)
 
 test: ## Executa as suítes de teste configuradas do backend
 	npx nx run-many -t test --projects=logger,recommender
+
+integration: ## Executa a integração isolada de importação concorrente
+	npx nx run recommender:integration
 
 up: ## Sobe banco, migration e BFF
 	$(COMPOSE) up -d --remove-orphans
@@ -39,6 +42,14 @@ logs-bff: ## Acompanha os logs do BFF
 
 logs-database: ## Acompanha os logs do libSQL
 	$(COMPOSE) logs -f database
+
+logs-worker: ## Acompanha os logs do worker de importação
+	$(COMPOSE) logs -f dataset-import-worker
+
+logs-rabbitmq: ## Acompanha os logs do RabbitMQ
+	$(COMPOSE) logs -f rabbitmq
+
+logs-queue: logs-rabbitmq ## Alias para os logs da fila RabbitMQ
 
 migrate: ## Executa somente a migration do banco
 	$(COMPOSE) run --rm --no-deps migrate

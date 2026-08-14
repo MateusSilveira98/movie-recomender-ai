@@ -40,6 +40,7 @@ export function RecommendationsStep({
   onStartNewRound,
 }: RecommendationsStepProps) {
   const [activeTab, setActiveTab] = useState<RecommendationResultTab>('recommendations');
+  const activeRound = rounds[0];
 
   return (
     <Stack spacing={3}>
@@ -69,6 +70,8 @@ export function RecommendationsStep({
               scrollButtons="auto"
             >
               <Tab label="Recomendacoes" value="recommendations" />
+              <Tab label={`Gostei (${activeRound?.history.liked.length ?? 0})`} value="liked" />
+              <Tab label={`Nao gostei (${activeRound?.history.disliked.length ?? 0})`} value="disliked" />
               <Tab label={`Historico (${rounds.length})`} value="rounds" />
             </Tabs>
           </Stack>
@@ -86,8 +89,30 @@ export function RecommendationsStep({
           onFeedback={onFeedback}
         />
       )}
+      {activeTab === 'liked' && <RoundFeedback round={activeRound} opinion="liked" />}
+      {activeTab === 'disliked' && <RoundFeedback round={activeRound} opinion="disliked" />}
       {activeTab === 'rounds' && <RecommendationRoundsHistory rounds={rounds} />}
     </Stack>
+  );
+}
+
+function RoundFeedback({
+  round,
+  opinion,
+}: {
+  round: RecommendationsStepProps['rounds'][number] | undefined;
+  opinion: 'liked' | 'disliked';
+}) {
+  const isLiked = opinion === 'liked';
+  const movieIds = round?.history[opinion] ?? [];
+  const label = isLiked ? 'Filmes que vc marcou como gostei' : 'Filmes que vc marcou como nao gostei';
+
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <HistoryLine label={label} movieIds={movieIds} movieTitles={round?.movieTitles} />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -134,7 +159,7 @@ function RecommendationsList({
                   </Typography>
                   <Typography color="text.secondary">{movie.description}</Typography>
                 </Box>
-                <Chip color="primary" label={`${Math.max(movie.score, 1) * 10}% match`} />
+                <Chip color="primary" label={`${movie.matchPercentage ?? 0}% match`} />
               </Stack>
               <Typography>{movie.reason}.</Typography>
               <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
@@ -179,8 +204,6 @@ function RecommendationRoundsHistory({ rounds }: Pick<RecommendationsStepProps, 
   return (
     <Stack spacing={2}>
       {rounds.map((round, index) => {
-        const movieTitles = Object.fromEntries(round.recommendations.map((movie) => [movie.id, movie.title]));
-
         return (
           <Card key={round.id} variant="outlined">
           <CardContent>
@@ -209,9 +232,12 @@ function RecommendationRoundsHistory({ rounds }: Pick<RecommendationsStepProps, 
                 <Typography variant="subtitle2">Recomendacoes</Typography>
                 {round.recommendations.map((movie) => (
                   <Box key={movie.id}>
-                    <Typography variant="body2">
-                      {movie.title} ({movie.year})
-                    </Typography>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Typography variant="body2">
+                        {movie.title} ({movie.year})
+                      </Typography>
+                      <Chip label={`${movie.matchPercentage ?? 0}% match`} size="small" variant="outlined" />
+                    </Stack>
                     <Typography color="text.secondary" variant="body2">
                       {movie.reason}.
                     </Typography>
@@ -221,9 +247,9 @@ function RecommendationRoundsHistory({ rounds }: Pick<RecommendationsStepProps, 
 
               <Stack spacing={2}>
                 <Typography variant="subtitle2">Sinais usados</Typography>
-                <HistoryLine label="Visualizados" movieIds={round.history.watched} movieTitles={movieTitles} />
-                <HistoryLine label="Gostei" movieIds={round.history.liked} movieTitles={movieTitles} />
-                <HistoryLine label="Nao gostei" movieIds={round.history.disliked} movieTitles={movieTitles} />
+                <HistoryLine label="Visualizados" movieIds={round.history.watched} movieTitles={round.movieTitles} />
+                <HistoryLine label="Gostei" movieIds={round.history.liked} movieTitles={round.movieTitles} />
+                <HistoryLine label="Nao gostei" movieIds={round.history.disliked} movieTitles={round.movieTitles} />
               </Stack>
             </Stack>
           </CardContent>

@@ -35,6 +35,7 @@ describe('repositório de sessões anônimas', () => {
 
       assert.equal(roundsWithinRetention.length, 1);
       assert.equal(roundsWithinRetention[0]?.createdAt, new Date(eventCreatedAtMs).toISOString());
+      assert.deepEqual(roundsWithinRetention[0]?.recommendations, [{ movieId: 'movie-id', score: 1 }]);
 
       await repository.cleanupExpired(nowMs);
 

@@ -1,4 +1,6 @@
-import * as tf from '@tensorflow/tfjs-node';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import * as tf from '@tensorflow/tfjs';
 import type { TrainingModel, TrainingModelPort } from '../../application/ports/training-model.port.js';
 import type { PreparedTrainingData } from '../../domain/models/prepared-training-data.model.js';
 
@@ -11,7 +13,56 @@ function create(featureCount: number): TensorflowModel {
   model.add(tf.layers.dense({ inputShape: [featureCount], activation: 'relu', units: 8 }));
   model.add(tf.layers.dense({ activation: 'sigmoid', units: 1 }));
   model.compile({ loss: 'meanSquaredError', optimizer: tf.train.adam(0.01) });
-  return { dispose: () => model.dispose(), export: async (directory) => { await model.save(`file://${directory}`); }, model };
+  return { dispose: () => model.dispose(), export: (directory) => saveModel(model, directory), model };
+}
+
+async function saveModel(model: tf.Sequential, directory: string): Promise<void> {
+  await mkdir(directory, { recursive: true });
+  await model.save(tf.io.withSaveHandler(async (artifacts) => {
+    const weightData = normalizeWeightData(artifacts.weightData);
+    const modelJson = {
+      convertedBy: artifacts.convertedBy,
+      format: 'layers-model',
+      generatedBy: artifacts.generatedBy,
+      modelTopology: artifacts.modelTopology,
+      weightsManifest: [{ paths: ['weights.bin'], weights: artifacts.weightSpecs }],
+    };
+
+    await Promise.all([
+      writeFile(resolve(directory, 'model.json'), JSON.stringify(modelJson)),
+      writeFile(resolve(directory, 'weights.bin'), weightData),
+    ]);
+
+    return {
+      modelArtifactsInfo: {
+        dateSaved: new Date(),
+        modelTopologyBytes: JSON.stringify(artifacts.modelTopology).length,
+        modelTopologyType: 'JSON',
+        weightDataBytes: weightData.byteLength,
+        weightSpecsBytes: JSON.stringify(artifacts.weightSpecs).length,
+      },
+    };
+  }));
+}
+
+function normalizeWeightData(weightData: tf.io.WeightData | undefined): Uint8Array {
+  if (!weightData) {
+    throw new Error('O TensorFlow não retornou os pesos do modelo treinado.');
+  }
+
+  if (!Array.isArray(weightData)) {
+    return new Uint8Array(weightData);
+  }
+
+  const bytes = new Uint8Array(weightData.reduce((size, part) => size + part.byteLength, 0));
+  let offset = 0;
+
+  for (const part of weightData) {
+    bytes.set(new Uint8Array(part), offset);
+    offset += part.byteLength;
+  }
+
+  return bytes;
 }
 
 async function train(model: TrainingModel, trainData: PreparedTrainingData, validationData: PreparedTrainingData): Promise<void> {

@@ -1,0 +1,30 @@
+services:
+  migrate:
+    command: npm exec -- tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts
+    volumes:
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules:ro
+
+  bff:
+    volumes:
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules:ro
+
+  dataset-import-reader:
+    environment:
+      DATASET_IMPORT_CHUNK_RECORD_COUNT: "100"
+    volumes:
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules:ro
+
+  dataset-import-writer:
+    environment:
+      DATASET_IMPORT_CHUNK_RECORD_COUNT: "100"
+    volumes:
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules:ro
+
+volumes:
+  workspace-node-modules:
+    external: true
+    name: movie-recomender-ai_workspace-node-modules

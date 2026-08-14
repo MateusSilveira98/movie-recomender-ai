@@ -16,22 +16,24 @@ export interface StoredDatasetImportJob extends DatasetImportJob {
   storagePath: string | null;
 }
 
-export async function createDatasetUploadWithJob(client: Client, upload: DatasetUploadInput): Promise<DatasetUpload> {
-  const uploadId = crypto.randomUUID();
+export async function createDatasetUploadWithJob(client: Client, upload: DatasetUploadInput, uploadId: string = crypto.randomUUID()): Promise<DatasetUpload> {
   const jobId = crypto.randomUUID();
 
   await client.batch([
     {
-      sql: `INSERT INTO dataset_uploads (id, file_name, file_type, storage_path, size_bytes, status)
+      sql: `INSERT OR IGNORE INTO dataset_uploads (id, file_name, file_type, storage_path, size_bytes, status)
         VALUES (?, ?, ?, ?, ?, 'queued')`,
       args: [uploadId, upload.fileName, upload.type, upload.storagePath, upload.sizeBytes],
     },
     {
-      sql: `INSERT INTO dataset_import_jobs (id, upload_id, file_type, status)
+      sql: `INSERT OR IGNORE INTO dataset_import_jobs (id, upload_id, file_type, status)
         VALUES (?, ?, ?, 'queued')`,
       args: [jobId, uploadId, upload.type],
     },
   ], 'write');
+
+  const existing = await findDatasetUpload(client, uploadId);
+  if (existing) return existing;
 
   return {
     completedAt: null,
@@ -77,7 +79,7 @@ export async function claimNextDatasetImportJob(client: Client): Promise<StoredD
   return findStoredJob(client, jobId);
 }
 
-export async function completeDatasetImportJob(client: Client, job: StoredDatasetImportJob, result: DatasetImportResult): Promise<void> {
+export async function completeDatasetImportJob(client: Client, job: Pick<StoredDatasetImportJob, 'id' | 'uploadId'>, result: DatasetImportResult): Promise<void> {
   const status = resolveDatasetUploadStatus(result);
 
   await client.batch([
@@ -87,7 +89,8 @@ export async function completeDatasetImportJob(client: Client, job: StoredDatase
     },
     {
       sql: `UPDATE dataset_uploads
-        SET status = ?, processed_rows = ?, imported_rows = ?, rejected_rows = ?, waiting_dependency_rows = ?,
+        SET status = CASE WHEN status = 'partial_error' THEN 'partial_error' ELSE ? END,
+          processed_rows = ?, imported_rows = ?, rejected_rows = ?, waiting_dependency_rows = ?,
           failures_json = ?, dependencies_json = ?, error_message = NULL, updated_at = CURRENT_TIMESTAMP,
           completed_at = CURRENT_TIMESTAMP, storage_path = NULL
         WHERE id = ?`,
@@ -102,26 +105,63 @@ export async function completeDatasetImportJob(client: Client, job: StoredDatase
         job.uploadId,
       ],
     },
+    { sql: 'DELETE FROM dataset_import_rating_keys WHERE upload_id = ?', args: [job.uploadId] },
+    { sql: 'DELETE FROM dataset_import_link_keys WHERE upload_id = ?', args: [job.uploadId] },
   ], 'write');
 }
 
-export async function waitForDatasetDependencies(client: Client, job: StoredDatasetImportJob, dependencies: DatasetDependency[]): Promise<void> {
+export async function startDatasetImportJob(client: Client, job: Pick<StoredDatasetImportJob, 'id' | 'uploadId'>): Promise<void> {
+  await client.batch([
+    { sql: "UPDATE dataset_import_jobs SET status = 'processing', started_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'queued'", args: [job.id] },
+    { sql: "UPDATE dataset_uploads SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'queued'", args: [job.uploadId] },
+  ], 'write');
+}
+
+export async function waitForDatasetDependencies(
+  client: Client,
+  job: StoredDatasetImportJob,
+  dependencies: DatasetDependency[],
+  waitingDependencies?: number,
+): Promise<void> {
+  const chunks = await client.execute({
+    sql: `SELECT COALESCE(SUM(processed_rows), 0) AS processed, COALESCE(SUM(imported_rows), 0) AS imported,
+      COALESCE(SUM(rejected_rows), 0) AS rejected, COALESCE(SUM(missing_dependency_rows), 0) AS waiting_dependencies
+      FROM dataset_import_chunks WHERE job_id = ?`,
+    args: [job.id],
+  });
+  const summary = chunks.rows[0] ?? {};
+
   await client.batch([
     {
-      sql: `UPDATE dataset_import_jobs SET status = 'waiting_dependencies', error_message = NULL WHERE id = ?`,
+      sql: `UPDATE dataset_import_jobs SET status = 'completed', completed_at = CURRENT_TIMESTAMP, error_message = NULL WHERE id = ?`,
       args: [job.id],
     },
     {
       sql: `UPDATE dataset_uploads
-        SET status = 'waiting_dependencies', dependencies_json = ?, updated_at = CURRENT_TIMESTAMP, error_message = NULL
+        SET status = 'partial_error', processed_rows = ?, imported_rows = ?, rejected_rows = ?, waiting_dependency_rows = ?,
+          dependencies_json = ?, updated_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP, storage_path = NULL,
+          error_message = NULL
         WHERE id = ?`,
-      args: [JSON.stringify(dependencies), job.uploadId],
+      args: [
+        Number(summary.processed ?? 0),
+        Number(summary.imported ?? 0),
+        Number(summary.rejected ?? 0),
+        waitingDependencies ?? Number(summary.waiting_dependencies ?? 0),
+        JSON.stringify(dependencies),
+        job.uploadId,
+      ],
     },
   ], 'write');
 }
 
-export async function failDatasetImportJob(client: Client, job: StoredDatasetImportJob, errorMessage: string, failure: DatasetFailure): Promise<void> {
+export async function failDatasetImportJob(client: Client, job: Pick<StoredDatasetImportJob, 'id' | 'uploadId'>, errorMessage: string, failures: DatasetFailure[]): Promise<void> {
   await client.batch([
+    {
+      sql: `UPDATE dataset_import_chunks
+        SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error_message = ?
+        WHERE job_id = ? AND status IN ('queued', 'processing')`,
+      args: [errorMessage, job.id],
+    },
     {
       sql: `UPDATE dataset_import_jobs SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error_message = ? WHERE id = ?`,
       args: [errorMessage, job.id],
@@ -131,7 +171,27 @@ export async function failDatasetImportJob(client: Client, job: StoredDatasetImp
         SET status = 'error', failures_json = ?, dependencies_json = '[]', error_message = ?, updated_at = CURRENT_TIMESTAMP,
           completed_at = CURRENT_TIMESTAMP, storage_path = NULL
         WHERE id = ?`,
-      args: [JSON.stringify([failure]), errorMessage, job.uploadId],
+      args: [JSON.stringify(failures), errorMessage, job.uploadId],
+    },
+    { sql: 'DELETE FROM dataset_import_rating_keys WHERE upload_id = ?', args: [job.uploadId] },
+    { sql: 'DELETE FROM dataset_import_link_keys WHERE upload_id = ?', args: [job.uploadId] },
+  ], 'write');
+}
+
+export async function requeueRetryableDatasetImportJob(client: Client, job: StoredDatasetImportJob, errorMessage: string): Promise<void> {
+  await client.batch([
+    {
+      sql: `UPDATE dataset_import_jobs
+        SET status = 'queued', error_message = ?, completed_at = NULL
+        WHERE id = ? AND status = 'processing'`,
+      args: [errorMessage, job.id],
+    },
+    {
+      sql: `UPDATE dataset_uploads
+        SET status = 'queued', error_message = ?, failures_json = '[]', dependencies_json = '[]',
+          completed_at = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+      args: [errorMessage, job.uploadId],
     },
   ], 'write');
 }
@@ -159,8 +219,40 @@ export async function requeueWaitingDatasetJobs(client: Client, dependency: Data
   }
 }
 
+export async function requeueInterruptedDatasetImportJobs(client: Client): Promise<void> {
+  await client.batch([
+    {
+      sql: `UPDATE dataset_import_jobs
+        SET status = 'queued', error_message = NULL
+        WHERE status = 'processing'`,
+      args: [],
+    },
+    {
+      sql: `UPDATE dataset_import_chunks SET status = 'queued', error_message = NULL, completed_at = NULL
+        WHERE status = 'processing' AND job_id IN (SELECT id FROM dataset_import_jobs WHERE status = 'queued')`,
+      args: [],
+    },
+    {
+      sql: `UPDATE dataset_uploads
+        SET status = 'queued', error_message = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (SELECT upload_id FROM dataset_import_jobs WHERE status = 'queued')
+          AND status = 'processing'`,
+      args: [],
+    },
+  ], 'write');
+}
+
 export async function listDatasetUploads(client: Client): Promise<DatasetUpload[]> {
-  const result = await client.execute(`SELECT uploads.*, jobs.id AS job_id
+  const result = await client.execute(`SELECT uploads.*, jobs.id AS job_id,
+    CASE WHEN jobs.file_type = 'ratings' AND uploads.status = 'partial_error'
+      AND uploads.waiting_dependency_rows > 0
+      AND EXISTS (
+        SELECT 1 FROM dataset_import_chunks chunks
+        WHERE chunks.job_id = jobs.id
+          AND chunks.status = 'completed'
+          AND chunks.imported_rows > 0
+          AND chunks.rating_stats_materialized_at IS NULL
+      ) THEN 'processing' ELSE uploads.status END AS display_status
     FROM dataset_uploads uploads JOIN dataset_import_jobs jobs ON jobs.upload_id = uploads.id
     ORDER BY uploads.created_at DESC`);
 
@@ -169,7 +261,16 @@ export async function listDatasetUploads(client: Client): Promise<DatasetUpload[
 
 export async function findDatasetUpload(client: Client, uploadId: string): Promise<DatasetUpload | null> {
   const result = await client.execute({
-    sql: `SELECT uploads.*, jobs.id AS job_id
+    sql: `SELECT uploads.*, jobs.id AS job_id,
+      CASE WHEN jobs.file_type = 'ratings' AND uploads.status = 'partial_error'
+        AND uploads.waiting_dependency_rows > 0
+        AND EXISTS (
+          SELECT 1 FROM dataset_import_chunks chunks
+          WHERE chunks.job_id = jobs.id
+            AND chunks.status = 'completed'
+            AND chunks.imported_rows > 0
+            AND chunks.rating_stats_materialized_at IS NULL
+        ) THEN 'processing' ELSE uploads.status END AS display_status
       FROM dataset_uploads uploads JOIN dataset_import_jobs jobs ON jobs.upload_id = uploads.id WHERE uploads.id = ?`,
     args: [uploadId],
   });
@@ -215,7 +316,7 @@ function toDatasetUpload(row: Record<string, unknown>): DatasetUpload {
     id: String(row.id),
     jobId: String(row.job_id),
     sizeBytes: Number(row.size_bytes),
-    status: String(row.status) as DatasetUploadStatus,
+    status: String(row.display_status ?? row.status) as DatasetUploadStatus,
     summary: {
       imported: Number(row.imported_rows),
       processed: Number(row.processed_rows),

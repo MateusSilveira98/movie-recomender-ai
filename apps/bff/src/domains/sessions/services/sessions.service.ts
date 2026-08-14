@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { getRecommendations } from '@pkg/recommender';
+import { createRecommendationRanker, type RecommendationRanker } from '@pkg/recommender';
 import type { AnonymousProfile } from '@pkg/shared/entities/models/anonymous-profile.model';
 import type { CreateSessionRequest } from '@pkg/shared/entities/models/create-session-request.model';
 import type { Movie } from '@pkg/shared/entities/models/movie.model';
+import type { Preferences } from '@pkg/shared/entities/models/preferences.model';
 import type { Recommendation } from '@pkg/shared/entities/models/recommendation.model';
 import type { RecommendationRound } from '@pkg/shared/entities/models/recommendation-round.model';
 import type { Session } from '@pkg/shared/entities/models/session.model';
@@ -13,7 +14,6 @@ import type { StoredAnonymousProfile, StoredRecommendationRound, StoredSession, 
 import { applyFeedbackToHistory } from './session-feedback.service.js';
 import { generateSessionId } from './session-id.service.js';
 
-const RANKING_VERSION = 'heuristic-v1';
 const ROUND_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
@@ -43,6 +43,7 @@ export interface SessionsService {
 export function createSessionsService(
   sessionRepository: SessionRepository,
   movieCatalogRepository: MovieCatalogRepository,
+  recommendationRanker: RecommendationRanker = createRecommendationRanker(),
 ): SessionsService {
   return {
     async applyFeedback(profile, request) {
@@ -61,7 +62,7 @@ export function createSessionsService(
 
       const [profileState, catalog] = await Promise.all([
         sessionRepository.findProfileState(profile.id),
-        movieCatalogRepository.list(),
+        movieCatalogRepository.listRankingCandidates(),
       ]);
       const history = applyFeedbackToHistory(session.history, target.movieId, request.feedback);
       const nextProfile: AnonymousProfile = {
@@ -78,14 +79,21 @@ export function createSessionsService(
         return null;
       }
 
-      const recommendations = await createRecommendations(sessionRepository, catalog, updatedSession, nowMs);
+      const recommendations = await createRecommendations(
+        sessionRepository,
+        movieCatalogRepository,
+        catalog,
+        updatedSession,
+        nowMs,
+        recommendationRanker,
+      );
 
       return { profile: nextProfile, recommendations, session: toPublicSession(updatedSession) };
     },
     async create(profile, request) {
       const nowMs = Date.now();
       const [catalog, profileState] = await Promise.all([
-        movieCatalogRepository.list(),
+        movieCatalogRepository.listRankingCandidates(),
         sessionRepository.findProfileState(profile.id),
       ]);
       const incomingHistory = request.history ?? emptyHistory();
@@ -95,38 +103,53 @@ export function createSessionsService(
         preferences: { ...request.preferences, freeText: '' },
       };
       const createdAt = new Date(nowMs).toISOString();
+      const ranking = recommendationRanker.rank(catalog, nextProfile.preferences, nextProfile.history);
       await sessionRepository.abandonActiveSessions(profile.id, nowMs);
       const session: StoredSession = await sessionRepository.createSession({
-        candidateCount: catalog.filter((movie) => !nextProfile.history.watched.includes(movie.id)).length,
+        candidateCount: ranking.candidateCount,
         createdAt,
         expiresAtMs: nowMs + SESSION_TTL_MS,
         history: nextProfile.history,
         id: generateSessionId(),
+        modelVersion: ranking.modelVersion,
         preferences: request.preferences,
         profileId: profile.id,
-        rankingVersion: RANKING_VERSION,
+        rankingVersion: ranking.rankingVersion,
         roundId: randomUUID(),
       });
 
       await sessionRepository.saveProfileState(profile.id, nextProfile, nowMs);
 
-      const recommendations = await createRecommendations(sessionRepository, catalog, session, nowMs);
+      const recommendations = withMatchPercentages(await sessionRepository.recordImpressions(
+        session.roundId,
+        await hydrateRecommendations(movieCatalogRepository, ranking.recommendations),
+        nowMs,
+      ), session.preferences);
 
       return { profile: nextProfile, recommendations, session: toPublicSession(session) };
     },
     async findCurrent(profile) {
       const nowMs = Date.now();
-      const [profileState, session, storedRounds, catalog] = await Promise.all([
+      const [profileState, session, storedRounds] = await Promise.all([
         sessionRepository.findProfileState(profile.id),
         sessionRepository.findActiveSession(profile.id, nowMs),
         sessionRepository.findRecentRounds(profile.id, nowMs - ROUND_RETENTION_MS),
-        movieCatalogRepository.list(),
       ]);
-      const rounds = toRecommendationRounds(storedRounds, catalog);
+
+      if (!session && storedRounds.length === 0) {
+        return { profile: profileState, recommendations: [], rounds: [], session: null };
+      }
+
+      const roundsPromise = toRecommendationRounds(storedRounds, movieCatalogRepository);
 
       if (!session) {
-        return { profile: profileState, recommendations: [], rounds, session: null };
+        return { profile: profileState, recommendations: [], rounds: await roundsPromise, session: null };
       }
+
+      const [rounds, catalog] = await Promise.all([
+        roundsPromise,
+        movieCatalogRepository.listRankingCandidates(),
+      ]);
 
       const expiresAtMs = nowMs + SESSION_TTL_MS;
 
@@ -135,7 +158,14 @@ export function createSessionsService(
       }
 
       const refreshedSession = { ...session, expiresAtMs };
-      const recommendations = await createRecommendations(sessionRepository, catalog, refreshedSession, nowMs);
+      const recommendations = await createRecommendations(
+        sessionRepository,
+        movieCatalogRepository,
+        catalog,
+        refreshedSession,
+        nowMs,
+        recommendationRanker,
+      );
 
       return { profile: profileState, recommendations, rounds, session: toPublicSession(refreshedSession) };
     },
@@ -155,10 +185,17 @@ export function createSessionsService(
 
       const refreshedSession = { ...session, expiresAtMs };
       const [catalog, profileState] = await Promise.all([
-        movieCatalogRepository.list(),
+        movieCatalogRepository.listRankingCandidates(),
         sessionRepository.findProfileState(profile.id),
       ]);
-      const recommendations = await createRecommendations(sessionRepository, catalog, refreshedSession, nowMs);
+      const recommendations = await createRecommendations(
+        sessionRepository,
+        movieCatalogRepository,
+        catalog,
+        refreshedSession,
+        nowMs,
+        recommendationRanker,
+      );
 
       return { profile: profileState, recommendations, session: toPublicSession(refreshedSession) };
     },
@@ -167,20 +204,108 @@ export function createSessionsService(
 
 async function createRecommendations(
   sessionRepository: SessionRepository,
+  movieCatalogRepository: MovieCatalogRepository,
   catalog: Movie[],
   session: StoredSession,
   nowMs: number,
+  recommendationRanker: RecommendationRanker,
 ): Promise<Recommendation[]> {
-  const recommendations = getRecommendations(catalog, session.preferences, session.history);
+  const ranking = recommendationRanker.rank(catalog, session.preferences, session.history);
 
-  return sessionRepository.recordImpressions(session.roundId, recommendations, nowMs);
+  return withMatchPercentages(await sessionRepository.recordImpressions(
+    session.roundId,
+    await hydrateRecommendations(movieCatalogRepository, ranking.recommendations),
+    nowMs,
+  ), session.preferences);
 }
 
-function toRecommendationRounds(rounds: StoredRecommendationRound[], catalog: Movie[]): RecommendationRound[] {
-  return rounds.map((round) => ({
-    ...round,
-    recommendations: getRecommendations(catalog, round.preferences, round.history),
+async function toRecommendationRounds(
+  rounds: StoredRecommendationRound[],
+  movieCatalogRepository: MovieCatalogRepository,
+): Promise<RecommendationRound[]> {
+  const movieDetails = await movieCatalogRepository.findByIds(
+    rounds.flatMap((round) => [
+      ...round.recommendations.map((recommendation) => recommendation.movieId),
+      ...round.history.watched,
+      ...round.history.liked,
+      ...round.history.disliked,
+    ]),
+  );
+  const moviesById = new Map(movieDetails.map((movie) => [movie.id, movie]));
+
+  return rounds.map((round) => {
+    return {
+      createdAt: round.createdAt,
+      history: round.history,
+      movieTitles: resolveMovieTitles(round.history, moviesById),
+      preferences: round.preferences,
+      recommendations: round.recommendations.flatMap((recommendation) => {
+        const movie = moviesById.get(recommendation.movieId);
+
+        return movie
+          ? [{
+            ...movie,
+            matchPercentage: toMatchPercentage(recommendation.score, round.preferences),
+            reason: 'Recomendado nesta rodada',
+            score: recommendation.score,
+          }]
+          : [];
+      }),
+    };
+  });
+}
+
+async function hydrateRecommendations(
+  movieCatalogRepository: MovieCatalogRepository,
+  recommendations: readonly Recommendation[],
+): Promise<Recommendation[]> {
+  const movies = await movieCatalogRepository.findByIds(recommendations.map((recommendation) => recommendation.id));
+
+  return hydrateRecommendationsFromMovies(recommendations, new Map(movies.map((movie) => [movie.id, movie])));
+}
+
+function hydrateRecommendationsFromMovies(
+  recommendations: readonly Recommendation[],
+  moviesById: ReadonlyMap<string, Movie>,
+): Recommendation[] {
+  return recommendations.map((recommendation) => {
+    const movie = moviesById.get(recommendation.id);
+
+    return movie
+      ? { ...movie, impressionId: recommendation.impressionId, reason: recommendation.reason, score: recommendation.score }
+      : recommendation;
+  });
+}
+
+function withMatchPercentages(recommendations: readonly Recommendation[], preferences: Preferences): Recommendation[] {
+  return recommendations.map((recommendation) => ({
+    ...recommendation,
+    matchPercentage: toMatchPercentage(recommendation.score, preferences),
   }));
+}
+
+function toMatchPercentage(score: number, preferences: Preferences): number {
+  const maximumScore =
+    preferences.genres.length * 2 +
+    Number(preferences.runtime !== 'any') +
+    1 +
+    2;
+
+  return Math.round(Math.min(Math.max(score / Math.max(maximumScore, 1), 0), 1) * 100);
+}
+
+function resolveMovieTitles(history: ViewerHistory, moviesById: ReadonlyMap<string, Movie>): Record<string, string> {
+  const titles: Record<string, string> = {};
+
+  for (const movieId of new Set([...history.watched, ...history.liked, ...history.disliked])) {
+    const movie = moviesById.get(movieId);
+
+    if (movie) {
+      titles[movieId] = movie.title;
+    }
+  }
+
+  return titles;
 }
 
 function assertKnownMovieIds(catalogMovieIds: string[], history: ViewerHistory): void {

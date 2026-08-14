@@ -13,7 +13,7 @@ export function prepareTrainingData(records: readonly MovieTrainingRecord[], fea
   return {
     featureNames: FEATURE_NAMES,
     featureScales: scales,
-    features: records.map((record) => createFeatureVector(record, scales)),
+    features: records.map((record) => createModelFeatureVector(record, scales)),
     labels: records.map((record) => normalize(record.ratingAverage, RATING_SCALE)),
     targetScale: RATING_SCALE,
   };
@@ -52,7 +52,10 @@ function createFeatureScales(records: readonly MovieTrainingRecord[]): TrainingF
   };
 }
 
-function createFeatureVector(record: MovieTrainingRecord, scales: TrainingFeatureScales): number[] {
+export function createModelFeatureVector(
+  record: Pick<MovieTrainingRecord, 'popularity' | 'ratingCount' | 'ratingStddev' | 'voteAverage'>,
+  scales: TrainingFeatureScales,
+): number[] {
   return [
     normalize(Math.log1p(record.ratingCount), scales.ratingCountLog),
     normalize(record.ratingStddev, scales.ratingStddev),

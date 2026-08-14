@@ -62,11 +62,13 @@ export interface CrewRecord {
 export function toMovieRecord(row: Record<string, string>, links: DatasetLinks): MovieRecord | null {
   const tmdbId = row.id.trim();
   const tmdbIdNumber = parsePositiveInteger(tmdbId);
+  const title = row.title.trim() || row.original_title.trim();
 
-  if (tmdbId.length === 0 || tmdbIdNumber === null) {
+  if (tmdbId.length === 0 || tmdbIdNumber === null || tmdbIdNumber <= 0 || title.length === 0) {
     return null;
   }
 
+  const normalizedTmdbId = String(tmdbIdNumber);
   const releaseDate = row.release_date.trim() || null;
   const collection = parseCollection(row.belongs_to_collection);
   const link = links.byTmdbId.get(tmdbIdNumber);
@@ -80,11 +82,11 @@ export function toMovieRecord(row: Record<string, string>, links: DatasetLinks):
     belongsToCollectionJson: JSON.stringify(collection ?? {}),
     genres,
     homepage: row.homepage.trim(),
-    id: tmdbId,
+    id: normalizedTmdbId,
     imdbId: row.imdb_id.trim() || null,
     movieLensId: link?.movieLensId ?? null,
     originalLanguage: row.original_language.trim(),
-    originalTitle: row.original_title.trim() || row.title.trim(),
+    originalTitle: row.original_title.trim() || title,
     overview: row.overview.trim(),
     posterPath: row.poster_path.trim() || null,
     popularity: parseNumber(row.popularity),
@@ -93,8 +95,8 @@ export function toMovieRecord(row: Record<string, string>, links: DatasetLinks):
     runtimeMinutes: parsePositiveInteger(row.runtime) ?? 0,
     status: row.status.trim(),
     tagline: row.tagline.trim(),
-    title: row.title.trim(),
-    tmdbId,
+    title,
+    tmdbId: normalizedTmdbId,
     voteAverage: parseNumber(row.vote_average),
     voteCount: parsePositiveInteger(row.vote_count) ?? 0,
   };
@@ -153,9 +155,9 @@ export function toCrewRecord(value: unknown, movieId: string): CrewRecord | null
 }
 
 export function parseMovieId(value: string): string | null {
-  const movieId = value.trim();
+  const movieId = parsePositiveInteger(value.trim());
 
-  return movieId.length > 0 && parsePositiveInteger(movieId) !== null ? movieId : null;
+  return movieId === null || movieId <= 0 ? null : String(movieId);
 }
 
 export function normalizeMovieLensId(movie: MovieRecord, movieIdsByMovieLensId: Map<number, string>): void {

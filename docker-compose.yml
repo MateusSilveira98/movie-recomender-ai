@@ -12,10 +12,93 @@ services:
     volumes:
       - database-data:${DATABASE_DATA_DIR}
 
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Defina MINIO_ROOT_PASSWORD no .env.}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Defina MINIO_ROOT_USER no .env.}
+    ports:
+      - "${MINIO_API_HOST_PORT:-127.0.0.1:19000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-127.0.0.1:19001}:9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-07-16T15-35-03Z
+    entrypoint: /bin/sh
+    command:
+      - -ec
+      - |
+        attempt=0
+        until mc alias set local "http://minio:9000" "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
+          attempt=$$((attempt + 1))
+
+          if [ "$$attempt" -ge 30 ]; then
+            echo "Não foi possível conectar ao MinIO local." >&2
+            exit 1
+          fi
+
+          sleep 1
+        done
+
+        mc mb --ignore-existing "local/$${MODEL_STORAGE_BUCKET}"
+        mc mb --ignore-existing "local/$${DATASET_IMPORT_STORAGE_BUCKET}"
+
+        cat > /tmp/model-publisher-policy.json <<EOF
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Action": ["s3:GetObject", "s3:PutObject"],
+            "Resource": [
+              "arn:aws:s3:::$${MODEL_STORAGE_BUCKET}/$${MODEL_STORAGE_PREFIX}/*",
+              "arn:aws:s3:::$${DATASET_IMPORT_STORAGE_BUCKET}/dataset-imports/*"
+            ]
+          }, {
+            "Effect": "Allow",
+            "Action": ["s3:ListBucket"],
+            "Resource": ["arn:aws:s3:::$${DATASET_IMPORT_STORAGE_BUCKET}"],
+            "Condition": { "StringLike": { "s3:prefix": ["dataset-imports/*"] } }
+          }]
+        }
+        EOF
+        cat > /tmp/model-reader-policy.json <<EOF
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Action": ["s3:GetObject"],
+            "Resource": ["arn:aws:s3:::$${MODEL_STORAGE_BUCKET}/$${MODEL_STORAGE_PREFIX}/*"]
+          }]
+        }
+        EOF
+
+        mc admin policy create local model-publisher /tmp/model-publisher-policy.json
+        mc admin policy create local model-reader /tmp/model-reader-policy.json
+
+        mc admin user add local "$${MODEL_PUBLISHER_ACCESS_KEY}" "$${MODEL_PUBLISHER_SECRET_KEY}"
+        mc admin user add local "$${MODEL_READER_ACCESS_KEY}" "$${MODEL_READER_SECRET_KEY}"
+
+        mc admin policy attach local model-publisher --user "$${MODEL_PUBLISHER_ACCESS_KEY}"
+        mc admin policy attach local model-reader --user "$${MODEL_READER_ACCESS_KEY}"
+    environment:
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Defina MINIO_ROOT_PASSWORD no .env.}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Defina MINIO_ROOT_USER no .env.}
+      MODEL_PUBLISHER_ACCESS_KEY: ${MODEL_PUBLISHER_ACCESS_KEY:?Defina MODEL_PUBLISHER_ACCESS_KEY no .env.}
+      MODEL_PUBLISHER_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY:?Defina MODEL_PUBLISHER_SECRET_KEY no .env.}
+      MODEL_READER_ACCESS_KEY: ${MODEL_READER_ACCESS_KEY:?Defina MODEL_READER_ACCESS_KEY no .env.}
+      MODEL_READER_SECRET_KEY: ${MODEL_READER_SECRET_KEY:?Defina MODEL_READER_SECRET_KEY no .env.}
+      MODEL_STORAGE_BUCKET: ${MODEL_STORAGE_BUCKET:?Defina MODEL_STORAGE_BUCKET no .env.}
+      MODEL_STORAGE_PREFIX: ${MODEL_STORAGE_PREFIX:?Defina MODEL_STORAGE_PREFIX no .env.}
+      DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET:?Defina DATASET_IMPORT_STORAGE_BUCKET no .env.}
+    depends_on:
+      - minio
+
   migrate:
     image: node:22.16.0-alpine
     working_dir: ${WORKSPACE_DIR}
-    command: sh -lc "npm ci --no-audit && npm exec -- tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts"
+    command: sh -lc "npm ci --ignore-scripts --no-audit && ./node_modules/.bin/tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts"
     environment:
       DATABASE_URL: ${DATABASE_URL}
     volumes:
@@ -27,13 +110,29 @@ services:
   bff:
     image: node:22.16.0-alpine
     working_dir: ${WORKSPACE_DIR}
-    command: npx tsx watch --tsconfig tsconfig.base.json apps/bff/src/main.ts
+    command: ./node_modules/.bin/tsx watch --tsconfig tsconfig.base.json apps/bff/src/main.ts
     environment:
       PORT: ${BFF_PORT}
       DATABASE_URL: ${DATABASE_URL}
       UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES}
       UPLOAD_STORAGE_DIR: ${UPLOAD_STORAGE_DIR}
+      DATASET_IMPORT_ADMIN_TOKEN: ${DATASET_IMPORT_ADMIN_TOKEN}
       WEB_ORIGIN: ${WEB_ORIGIN}
+      MODEL_STORAGE_ACCESS_KEY: ${MODEL_READER_ACCESS_KEY:-}
+      MODEL_STORAGE_BUCKET: ${MODEL_STORAGE_BUCKET:-}
+      MODEL_STORAGE_ENDPOINT: ${MODEL_STORAGE_ENDPOINT:-}
+      MODEL_STORAGE_FORCE_PATH_STYLE: ${MODEL_STORAGE_FORCE_PATH_STYLE:-}
+      MODEL_STORAGE_PREFIX: ${MODEL_STORAGE_PREFIX:-}
+      MODEL_STORAGE_REGION: ${MODEL_STORAGE_REGION:-}
+      MODEL_STORAGE_SECRET_KEY: ${MODEL_READER_SECRET_KEY:-}
+      MODEL_VERSION: ${MODEL_VERSION:-}
+      DATASET_IMPORT_STORAGE_ACCESS_KEY: ${MODEL_PUBLISHER_ACCESS_KEY}
+      DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
+      DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
+      DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
+      DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
+      RABBITMQ_URL: ${RABBITMQ_URL}
     ports:
       - "${BFF_HOST_PORT}:${BFF_PORT}"
     volumes:
@@ -43,6 +142,64 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+
+  dataset-import-reader:
+    image: node:22.16.0-alpine
+    working_dir: ${WORKSPACE_DIR}
+    command: ./node_modules/.bin/tsx --tsconfig tsconfig.base.json packages/recommender/src/dataset-import-reader.worker.ts
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      DATASET_IMPORT_STORAGE_ACCESS_KEY: ${MODEL_PUBLISHER_ACCESS_KEY}
+      DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
+      DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
+      DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
+      DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
+      UPLOAD_STORAGE_DIR: ${UPLOAD_STORAGE_DIR}
+    volumes:
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules
+      - upload-data:${UPLOAD_STORAGE_DIR}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
+
+  dataset-import-writer:
+    image: node:22.16.0-alpine
+    working_dir: ${WORKSPACE_DIR}
+    command: ./node_modules/.bin/tsx --tsconfig tsconfig.base.json packages/recommender/src/dataset-import-writer.worker.ts
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      DATASET_IMPORT_STORAGE_ACCESS_KEY: ${MODEL_PUBLISHER_ACCESS_KEY}
+      DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
+      DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
+      DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
+      DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
+      UPLOAD_STORAGE_DIR: ${UPLOAD_STORAGE_DIR}
+    volumes:
+      - .:${WORKSPACE_DIR}
+      - workspace-node-modules:${WORKSPACE_DIR}/node_modules
+      - upload-data:${UPLOAD_STORAGE_DIR}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
+
+  rabbitmq:
+    image: rabbitmq:4.1.5-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?Defina RABBITMQ_DEFAULT_USER no .env.}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?Defina RABBITMQ_DEFAULT_PASS no .env.}
+    ports:
+      - "${RABBITMQ_AMQP_HOST_PORT:-127.0.0.1:15672}:5672"
+      - "${RABBITMQ_MANAGEMENT_HOST_PORT:-127.0.0.1:15673}:15672"
 
   train:
     build:
@@ -50,16 +207,34 @@ services:
       dockerfile: Dockerfile.train
     profiles:
       - maintenance
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        test -n "$$MODEL_VERSION" || {
+          echo "MODEL_VERSION precisa ser definido para publicar o modelo." >&2
+          exit 1
+        }
+        exec npm exec -- tsx --tsconfig tsconfig.base.json packages/ml/src/train.ts
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      TRAINING_MODEL_DIR: /models/movie-recommender-baseline
-    volumes:
-      - ./models:/models
+      MODEL_STORAGE_ACCESS_KEY: ${MODEL_PUBLISHER_ACCESS_KEY:?Defina MODEL_PUBLISHER_ACCESS_KEY no .env.}
+      MODEL_STORAGE_BUCKET: ${MODEL_STORAGE_BUCKET}
+      MODEL_STORAGE_ENDPOINT: ${MODEL_STORAGE_ENDPOINT}
+      MODEL_STORAGE_FORCE_PATH_STYLE: ${MODEL_STORAGE_FORCE_PATH_STYLE}
+      MODEL_STORAGE_PREFIX: ${MODEL_STORAGE_PREFIX}
+      MODEL_STORAGE_REGION: ${MODEL_STORAGE_REGION}
+      MODEL_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY:?Defina MODEL_PUBLISHER_SECRET_KEY no .env.}
+      MODEL_VERSION: ${MODEL_VERSION:-}
+      TRAINING_MODEL_DIR: /tmp/movie-recommender-model
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      minio-init:
         condition: service_completed_successfully
 
 volumes:
   database-data:
+  minio-data:
   upload-data:
   workspace-node-modules:

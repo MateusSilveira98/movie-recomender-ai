@@ -25,6 +25,13 @@ export interface StoredRecommendationRound {
   createdAt: string;
   history: ViewerHistory;
   preferences: Preferences;
+  recommendations: StoredRecommendationImpression[];
+  id: string;
+}
+
+export interface StoredRecommendationImpression {
+  movieId: string;
+  score: number;
 }
 
 export interface NewSession {
@@ -33,6 +40,7 @@ export interface NewSession {
   expiresAtMs: number;
   history: ViewerHistory;
   id: string;
+  modelVersion?: string;
   preferences: Preferences;
   profileId: string;
   rankingVersion: string;
@@ -185,8 +193,8 @@ export function createSqlSessionRepository(databaseClient: Client): SessionRepos
         },
         {
           sql: `INSERT INTO recommendation_rounds (
-              id, profile_id, session_id, sequence, genres_json, runtime_preference, ranking_version, candidate_count, created_at_ms
-            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+              id, profile_id, session_id, sequence, genres_json, runtime_preference, ranking_version, model_version, candidate_count, created_at_ms
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
           args: [
             session.roundId,
             session.profileId,
@@ -194,6 +202,7 @@ export function createSqlSessionRepository(databaseClient: Client): SessionRepos
             JSON.stringify(session.preferences.genres),
             session.preferences.runtime,
             session.rankingVersion,
+            session.modelVersion ?? null,
             session.candidateCount,
             Date.parse(session.createdAt),
           ],
@@ -306,9 +315,9 @@ export function createSqlSessionRepository(databaseClient: Client): SessionRepos
       };
     },
     async findRecentRounds(profileId, sinceMs) {
-      const [roundsResult, feedbackResult] = await Promise.all([
+      const [roundsResult, feedbackResult, impressionsResult] = await Promise.all([
         databaseClient.execute({
-          sql: `SELECT session_id, genres_json, runtime_preference, created_at_ms
+          sql: `SELECT id AS round_id, session_id, genres_json, runtime_preference, created_at_ms
             FROM recommendation_rounds
             WHERE profile_id = ? AND created_at_ms >= ?
             ORDER BY created_at_ms DESC`,
@@ -321,16 +330,28 @@ export function createSqlSessionRepository(databaseClient: Client): SessionRepos
             WHERE recommendation_rounds.profile_id = ? AND recommendation_rounds.created_at_ms >= ?`,
           args: [profileId, sinceMs],
         }),
+        databaseClient.execute({
+          sql: `SELECT impressions.round_id, impressions.movie_id, impressions.score
+            FROM recommendation_impressions impressions
+            JOIN recommendation_rounds rounds ON rounds.id = impressions.round_id
+            WHERE rounds.profile_id = ? AND rounds.created_at_ms >= ?
+            ORDER BY rounds.created_at_ms DESC, impressions.position ASC, impressions.created_at_ms ASC, impressions.id ASC`,
+          args: [profileId, sinceMs],
+        }),
       ]);
       const feedbackBySessionId = groupFeedbackBySessionId(feedbackResult.rows);
+      const recommendationsByRoundId = groupRecommendationsByRoundId(impressionsResult.rows);
 
       return roundsResult.rows.map((row) => {
+        const roundId = String(row.round_id ?? '');
         const sessionId = String(row.session_id);
 
         return {
           createdAt: new Date(Number(row.created_at_ms)).toISOString(),
           history: historyFromRows(feedbackBySessionId.get(sessionId) ?? []),
+          id: roundId,
           preferences: preferencesFromRow(row),
+          recommendations: recommendationsByRoundId.get(roundId) ?? [],
         };
       });
     },
@@ -529,6 +550,26 @@ function groupFeedbackBySessionId(rows: Array<Record<string, unknown>>): Map<str
   }
 
   return feedbackBySessionId;
+}
+
+function groupRecommendationsByRoundId(rows: Array<Record<string, unknown>>): Map<string, StoredRecommendationImpression[]> {
+  const recommendationsByRoundId = new Map<string, StoredRecommendationImpression[]>();
+
+  for (const row of rows) {
+    const roundId = String(row.round_id ?? '');
+    const movieId = String(row.movie_id ?? '');
+    const score = Number(row.score);
+
+    if (roundId.length === 0 || movieId.length === 0 || !Number.isFinite(score)) {
+      continue;
+    }
+
+    const recommendations = recommendationsByRoundId.get(roundId) ?? [];
+    recommendations.push({ movieId, score });
+    recommendationsByRoundId.set(roundId, recommendations);
+  }
+
+  return recommendationsByRoundId;
 }
 
 function normalizeHistory(history: ViewerHistory): ViewerHistory {

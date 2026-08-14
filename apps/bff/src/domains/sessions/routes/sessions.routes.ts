@@ -1,4 +1,5 @@
 import express from 'express';
+import type { RecommendationRanker } from '@pkg/recommender';
 import {
   createCurrentSessionController,
   createCreateSessionController,
@@ -12,12 +13,17 @@ import { createSessionsService } from '../services/sessions.service.js';
 
 interface SessionsRoutesDependencies {
   movieCatalogRepository: MovieCatalogRepository;
+  recommendationRanker: RecommendationRanker;
   sessionRepository: SessionRepository;
 }
 
-export function createSessionsRoutes({ movieCatalogRepository, sessionRepository }: SessionsRoutesDependencies): express.Router {
+export function createSessionsRoutes({
+  movieCatalogRepository,
+  recommendationRanker,
+  sessionRepository,
+}: SessionsRoutesDependencies): express.Router {
   const router = express.Router();
-  const sessionsService = createSessionsService(sessionRepository, movieCatalogRepository);
+  const sessionsService = createSessionsService(sessionRepository, movieCatalogRepository, recommendationRanker);
   const anonymousProfileService = createAnonymousProfileService(sessionRepository);
 
   router.get('/sessions/current', createCurrentSessionController(sessionsService, anonymousProfileService));

@@ -15,11 +15,41 @@ async function main() {
 
   try {
     await client.executeMultiple(schema);
+    await migrateDatasetImportChunksSchema(client);
+    await migrateDatasetImportRatingKeysSchema(client);
     await migrateSessionMovieFeedbackSchema(client);
     await migrateAnonymousSessionSchema(client);
     logger.info({ component: 'database', event: 'schema_applied' });
   } finally {
     await client.close();
+  }
+}
+
+async function migrateDatasetImportRatingKeysSchema(client: Client): Promise<void> {
+  const columns = await client.execute({ sql: 'PRAGMA table_info(dataset_import_rating_keys)', args: [] });
+  const existingColumns = new Set(columns.rows.map((column) => String(column.name)));
+
+  if (!existingColumns.has('chunk_id')) {
+    await client.execute({ sql: "ALTER TABLE dataset_import_rating_keys ADD COLUMN chunk_id TEXT NOT NULL DEFAULT ''", args: [] });
+  }
+}
+
+async function migrateDatasetImportChunksSchema(client: Client): Promise<void> {
+  const columns = await client.execute({ sql: 'PRAGMA table_info(dataset_import_chunks)', args: [] });
+  const existingColumns = new Set(columns.rows.map((column) => String(column.name)));
+
+  if (!existingColumns.has('payload_path')) {
+    await client.execute({ sql: "ALTER TABLE dataset_import_chunks ADD COLUMN payload_path TEXT NOT NULL DEFAULT ''", args: [] });
+  }
+
+  for (const column of ['processed_rows', 'imported_rows', 'rejected_rows', 'missing_dependency_rows']) {
+    if (!existingColumns.has(column)) {
+      await client.execute({ sql: `ALTER TABLE dataset_import_chunks ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`, args: [] });
+    }
+  }
+
+  if (!existingColumns.has('rating_stats_materialized_at')) {
+    await client.execute({ sql: 'ALTER TABLE dataset_import_chunks ADD COLUMN rating_stats_materialized_at TEXT', args: [] });
   }
 }
 
@@ -33,6 +63,13 @@ async function migrateAnonymousSessionSchema(client: Client): Promise<void> {
 
   if (!existingColumns.has('expires_at_ms')) {
     await client.execute({ sql: 'ALTER TABLE sessions ADD COLUMN expires_at_ms INTEGER', args: [] });
+  }
+
+  const recommendationRoundColumns = await client.execute({ sql: 'PRAGMA table_info(recommendation_rounds)', args: [] });
+  const existingRecommendationRoundColumns = new Set(recommendationRoundColumns.rows.map((column) => String(column.name)));
+
+  if (!existingRecommendationRoundColumns.has('model_version')) {
+    await client.execute({ sql: 'ALTER TABLE recommendation_rounds ADD COLUMN model_version TEXT', args: [] });
   }
 
   await client.executeMultiple(`

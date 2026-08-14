@@ -5,6 +5,7 @@ import type { ViewerHistory } from './viewer-history.model.js';
 export interface RecommendationRound {
   createdAt: string;
   history: ViewerHistory;
+  movieTitles: Record<string, string>;
   preferences: Preferences;
   recommendations: Recommendation[];
 }
