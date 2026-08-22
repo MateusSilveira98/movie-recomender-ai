@@ -1,6 +1,6 @@
 import type { Context } from '@opentelemetry/api';
 import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { shouldExportEndedSpan } from './exportable-span.policy.js';
+import { shouldExportEndedSpan } from '../../domain/services/exportable-span.policy.js';
 
 export class ErrorOnlySpanProcessor implements SpanProcessor {
   constructor(private readonly delegate: SpanProcessor) {}
@@ -10,12 +10,14 @@ export class ErrorOnlySpanProcessor implements SpanProcessor {
   }
 
   onEnd(span: ReadableSpan): void {
-    if (shouldExportEndedSpan({
+    if (!shouldExportEndedSpan({
       attributes: span.attributes as Record<string, unknown>,
       status: { code: span.status.code },
     })) {
-      this.delegate.onEnd(span);
+      return;
     }
+
+    this.delegate.onEnd(span);
   }
 
   onStart(span: Span, parentContext: Context): void {

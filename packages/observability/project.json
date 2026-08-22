@@ -6,7 +6,7 @@
   "tags": ["scope:observability", "type:package"],
   "targets": {
     "test": {
-      "command": "tsx --tsconfig tsconfig.base.json --test packages/observability/src/observability-configuration.service.spec.ts packages/observability/src/exportable-span.policy.spec.ts"
+      "command": "tsx --tsconfig tsconfig.base.json --test packages/observability/src/application/services/read-observability-configuration.service.spec.ts packages/observability/src/domain/services/exportable-span.policy.spec.ts"
     },
     "typecheck": {
       "command": "tsc -p packages/observability/tsconfig.json --noEmit"

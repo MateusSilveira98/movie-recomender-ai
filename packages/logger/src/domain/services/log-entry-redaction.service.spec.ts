@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { redactLogEntry, selectExportableLogFields } from './log-entry-redaction.service.js';
+import { selectExportableLogFields } from '../consts/exportable-log-fields.const.js';
+import { redactLogEntry } from './log-entry-redaction.service.js';
 
 describe('log entry redaction', () => {
   it('deve remover chaves sensíveis e mascarar token no valor', () => {
     const redacted = redactLogEntry({
-      authorization: 'Bearer secret',
+      authorization: 'Bearer secret-token',
       component: 'bff',
       event: 'request_failed',
       path: '/health',

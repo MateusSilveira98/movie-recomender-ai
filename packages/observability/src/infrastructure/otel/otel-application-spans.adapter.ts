@@ -1,6 +1,12 @@
 import { SpanStatusCode, trace, type Span } from '@opentelemetry/api';
-import { recordImportJob } from './application-metrics.service.js';
-import { IMPORT_SUMMARY_ATTRIBUTE, IMPORT_SUMMARY_VALUE } from './exportable-span.policy.js';
+import { resolveErrorName } from '@pkg/logger';
+import {
+  isFailedImportResult,
+  isServerErrorStatus,
+  type ImportJobSummary,
+} from '../../domain/models/application-telemetry.model.js';
+import { IMPORT_SUMMARY_ATTRIBUTE, IMPORT_SUMMARY_VALUE } from '../../domain/services/exportable-span.policy.js';
+import { recordImportJob } from './otel-application-metrics.adapter.js';
 
 const tracer = trace.getTracer('movie-recommender');
 
@@ -16,23 +22,15 @@ export function startServerSpan(method: string, route: string): Span {
 export function finishServerSpan(span: Span, status: number): void {
   span.setAttribute('http.status_code', status);
 
-  if (status >= 500) {
+  if (isServerErrorStatus(status)) {
     span.setStatus({ code: SpanStatusCode.ERROR });
   }
 
   span.end();
 }
 
-export function recordImportJobSummary(input: {
-  imported: number;
-  jobId: string;
-  processed: number;
-  rejected: number;
-  result: string;
-  waitingDependencies: number;
-}): void {
+export function recordImportJobSummary(input: ImportJobSummary): void {
   recordImportJob(input.result);
-
   const span = tracer.startSpan('import.job.summary', {
     attributes: {
       [IMPORT_SUMMARY_ATTRIBUTE]: IMPORT_SUMMARY_VALUE,
@@ -45,14 +43,15 @@ export function recordImportJobSummary(input: {
     },
   });
 
-  if (input.result === 'error' || input.result === 'failed') {
+  if (isFailedImportResult(input.result)) {
     span.setStatus({ code: SpanStatusCode.ERROR });
   }
 
   span.end();
 }
 
-export function recordFailedOperation(name: string, errorName: string): void {
+export function recordFailedOperation(name: string, error: unknown): void {
+  const errorName = resolveErrorName(error);
   const span = tracer.startSpan(name);
   span.setStatus({ code: SpanStatusCode.ERROR, message: errorName });
   span.setAttribute('error.type', errorName);

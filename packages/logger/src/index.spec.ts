@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createLogger, setErrorLogSink } from './index.js';
-import type { LogEntry } from './log-entry.model.js';
+import { createLogger, setErrorLogSink, type LogEntry } from './index.js';
 
 describe('logger', () => {
   it('deve serializar eventos informativos estruturados', () => {

@@ -1,25 +1,20 @@
 import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response } from 'express';
-import { logger } from '@pkg/logger';
-import { finishServerSpan, recordHttpRequest, startServerSpan } from '@pkg/observability';
+import { logger, resolveErrorName } from '@pkg/logger';
+import { startHttpRequest } from '@pkg/observability';
 import multer from 'multer';
 
 export function createRequestLogger(): RequestHandler {
   return (request, response, next) => {
     const startedAt = Date.now();
-    const span = startServerSpan(request.method, request.path === '/health' ? '/health' : request.path);
+    const requestTelemetry = startHttpRequest(request.method, request.path);
 
     response.on('finish', () => {
       const durationMs = Date.now() - startedAt;
-      const route = resolveRequestRoute(request);
-      span.updateName(`HTTP ${request.method} ${route}`);
-      span.setAttribute('http.route', route);
-      recordHttpRequest({
+      requestTelemetry.complete({
         durationMs,
-        method: request.method,
-        route,
+        route: resolveRequestRoute(request),
         status: response.statusCode,
       });
-      finishServerSpan(span, response.statusCode);
       logger.info({
         component: 'bff',
         durationMs,
@@ -45,7 +40,7 @@ export function createAsyncHandler(
 export const requestErrorHandler: ErrorRequestHandler = (error, request, response, _next) => {
   logger.error({
     component: 'bff',
-    error: error instanceof Error ? error.name : 'UnknownError',
+    error: resolveErrorName(error),
     event: 'request_failed',
     method: request.method,
     path: request.path,

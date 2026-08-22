@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readObservabilityConfiguration } from './observability-configuration.service.js';
+import { readObservabilityConfiguration } from './read-observability-configuration.service.js';
 
 describe('readObservabilityConfiguration', () => {
   it('deve ficar desligada no Compose local mesmo com token', () => {

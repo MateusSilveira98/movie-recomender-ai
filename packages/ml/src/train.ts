@@ -66,7 +66,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     })
     .catch(async (error: unknown) => {
       recordTrainingJob({ durationSeconds: (Date.now() - startedAt) / 1000, result: 'failed' });
-      recordFailedOperation('training.job', error instanceof Error ? error.name : 'UnknownError');
+      recordFailedOperation('training.job', error);
       console.error(error);
       await stopObservability();
       process.exitCode = 1;

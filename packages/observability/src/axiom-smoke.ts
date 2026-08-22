@@ -1,6 +1,6 @@
 import { SpanStatusCode, metrics, trace } from '@opentelemetry/api';
 import { logs, SeverityNumber } from '@opentelemetry/api-logs';
-import { startObservability, stopObservability } from './start-observability.service.js';
+import { startObservability, stopObservability } from './application/services/start-observability.service.js';
 
 async function run(): Promise<void> {
   process.env.OTEL_ENABLED = process.env.OTEL_ENABLED || 'true';

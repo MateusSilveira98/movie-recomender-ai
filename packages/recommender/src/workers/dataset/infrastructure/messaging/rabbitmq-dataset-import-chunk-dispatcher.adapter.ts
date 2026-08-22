@@ -30,7 +30,7 @@ export function createRabbitMqDatasetImportChunkDispatcher(amqpUrl: string): Dat
         await channel.close();
         for (const type of DATASET_FILE_TYPES) {
           const count = messages.filter((message) => message.type === type).length;
-          if (count > 0) recordQueuePublish(count, type);
+          if (count > 0) recordQueuePublish({ count, datasetType: type });
         }
       } finally {
         await connection.close();

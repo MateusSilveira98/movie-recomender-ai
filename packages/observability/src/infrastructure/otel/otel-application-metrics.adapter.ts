@@ -1,4 +1,12 @@
 import { metrics } from '@opentelemetry/api';
+import type {
+  ActiveModelMetric,
+  HttpRequestMetric,
+  ImportChunkMetric,
+  QueueConsumeMetric,
+  QueuePublishMetric,
+  TrainingJobMetric,
+} from '../../domain/models/application-telemetry.model.js';
 
 const meter = metrics.getMeter('movie-recommender');
 
@@ -14,39 +22,39 @@ const trainingDuration = meter.createHistogram('training.duration', { unit: 's' 
 const trainingJobs = meter.createCounter('training.jobs');
 const activeModel = meter.createGauge('model.active.info');
 
-export function recordHttpRequest(input: {
-  durationMs: number;
-  method: string;
-  route: string;
-  status: number;
-}): void {
-  const attributes = { http_method: input.method, http_route: input.route, http_status: input.status };
+export function recordHttpRequest(input: HttpRequestMetric): void {
+  const attributes = {
+    http_method: input.method,
+    http_route: input.route,
+    http_status: input.status,
+  };
+
   httpDuration.record(input.durationMs, attributes);
   httpRequests.add(1, attributes);
 }
 
-export function recordQueuePublish(count: number, type: string): void {
-  queuePublish.add(count, { dataset_type: type });
+export function recordQueuePublish(input: QueuePublishMetric): void {
+  queuePublish.add(input.count, { dataset_type: input.datasetType });
 }
 
-export function recordQueueConsume(result: 'ack' | 'nack' | 'retry', type: string): void {
-  queueConsume.add(1, { dataset_type: type, result });
+export function recordQueueConsume(input: QueueConsumeMetric): void {
+  queueConsume.add(1, { dataset_type: input.datasetType, result: input.result });
 }
 
-export function recordImportChunk(result: 'processed' | 'failed', type: string): void {
-  importChunks.add(1, { dataset_type: type, result });
+export function recordImportChunk(input: ImportChunkMetric): void {
+  importChunks.add(1, { dataset_type: input.datasetType, result: input.result });
 }
 
 export function recordImportJob(result: string): void {
   importJobs.add(1, { result });
 }
 
-export function recordTrainingJob(input: { durationSeconds: number; result: 'trained' | 'failed' }): void {
+export function recordTrainingJob(input: TrainingJobMetric): void {
   trainingDuration.record(input.durationSeconds, { result: input.result });
   trainingJobs.add(1, { result: input.result });
 }
 
-export function recordActiveModel(input: { mode: string; modelVersion?: string | null }): void {
+export function recordActiveModel(input: ActiveModelMetric): void {
   activeModel.record(input.mode === 'inference' ? 1 : 0, {
     mode: input.mode,
     model_version: input.modelVersion ?? 'none',
