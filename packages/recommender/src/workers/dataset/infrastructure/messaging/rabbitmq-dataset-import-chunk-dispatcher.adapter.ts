@@ -1,3 +1,4 @@
+import { recordQueuePublish } from '@pkg/observability';
 import { connect, type Channel } from 'amqplib';
 import type { DatasetImportChunkDispatcher, DatasetImportChunkMessage } from '../../application/ports/dataset-import-chunk-dispatcher.port.js';
 import { DATASET_FILE_TYPES, type DatasetFileType } from '../../domain/dataset-import-queue.types.js';
@@ -27,6 +28,10 @@ export function createRabbitMqDatasetImportChunkDispatcher(amqpUrl: string): Dat
         }
         await channel.waitForConfirms();
         await channel.close();
+        for (const type of DATASET_FILE_TYPES) {
+          const count = messages.filter((message) => message.type === type).length;
+          if (count > 0) recordQueuePublish({ count, datasetType: type });
+        }
       } finally {
         await connection.close();
       }

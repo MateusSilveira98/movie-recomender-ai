@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { createDatabaseClient } from '@pkg/database';
+import { recordFailedOperation, recordTrainingJob, startObservability, stopObservability } from '@pkg/observability';
 import { publishModelArtifact } from './application/services/model-artifact-publisher.service.js';
 import { trainModel } from './application/services/train-model.service.js';
 import { getModelStorageConfiguration } from './infrastructure/config/model-storage-configuration.service.js';
@@ -54,10 +55,20 @@ export async function runTrainingJob(): Promise<TrainingJobResult> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runTrainingJob()
-    .then((result) => console.log(JSON.stringify(result, null, 2)))
-    .catch((error: unknown) => {
+  const startedAt = Date.now();
+
+  void startObservability({ serviceName: 'train' })
+    .then(() => runTrainingJob())
+    .then(async (result) => {
+      recordTrainingJob({ durationSeconds: (Date.now() - startedAt) / 1000, result: 'trained' });
+      console.log(JSON.stringify(result, null, 2));
+      await stopObservability();
+    })
+    .catch(async (error: unknown) => {
+      recordTrainingJob({ durationSeconds: (Date.now() - startedAt) / 1000, result: 'failed' });
+      recordFailedOperation('training.job', error);
       console.error(error);
+      await stopObservability();
       process.exitCode = 1;
     });
 }

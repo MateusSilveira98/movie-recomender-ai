@@ -6,7 +6,7 @@
   "tags": ["scope:logger", "type:package"],
   "targets": {
     "test": {
-      "command": "tsx --test packages/logger/src/index.spec.ts"
+      "command": "tsx --test packages/logger/src/index.spec.ts packages/logger/src/domain/services/error-fingerprint.service.spec.ts packages/logger/src/domain/services/log-entry-redaction.service.spec.ts"
     },
     "typecheck": {
       "command": "tsc -p packages/logger/tsconfig.json --noEmit"

@@ -27,6 +27,7 @@
       "@pkg/shared/entities/*": ["packages/shared/src/entities/*.ts"],
       "@pkg/shared/mocks/*": ["packages/shared/src/mocks/*/index.ts", "packages/shared/src/mocks/*.ts"],
       "@pkg/logger": ["packages/logger/src/index.ts"],
+      "@pkg/observability": ["packages/observability/src/index.ts"],
     }
   }
 }

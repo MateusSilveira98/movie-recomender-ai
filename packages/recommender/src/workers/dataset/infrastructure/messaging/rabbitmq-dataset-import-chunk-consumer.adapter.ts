@@ -1,3 +1,4 @@
+import { recordImportChunk, recordQueueConsume } from '@pkg/observability';
 import { connect } from 'amqplib';
 import type { DatasetImportChunkMessage } from '../../application/ports/dataset-import-chunk-dispatcher.port.js';
 import { immediateDatasetImportWriteExecutor, type DatasetImportWriteExecutor } from '../../application/dataset-import-write-executor.service.js';
@@ -38,17 +39,21 @@ export async function consumeRabbitMqDatasetImportChunks(
 
       if (!message) {
         channel.nack(received, false, false);
+        recordQueueConsume({ datasetType: type, result: 'nack' });
         return;
       }
 
       if (message.type !== type) {
         channel.nack(received, false, false);
+        recordQueueConsume({ datasetType: type, result: 'nack' });
         return;
       }
 
       try {
         await writeExecutor.execute(() => handler.process(message));
         channel.ack(received);
+        recordQueueConsume({ datasetType: type, result: 'ack' });
+        recordImportChunk({ datasetType: type, result: 'processed' });
       } catch {
         const attempts = Number(received.properties.headers?.['x-retry-count'] ?? 0) + 1;
 
@@ -57,6 +62,8 @@ export async function consumeRabbitMqDatasetImportChunks(
             await writeExecutor.execute(() => handler.fail(message));
           } finally {
             channel.nack(received, false, false);
+            recordQueueConsume({ datasetType: type, result: 'nack' });
+            recordImportChunk({ datasetType: type, result: 'failed' });
           }
           return;
         }
@@ -70,8 +77,10 @@ export async function consumeRabbitMqDatasetImportChunks(
           });
           await channel.waitForConfirms();
           channel.ack(received);
+          recordQueueConsume({ datasetType: type, result: 'retry' });
         } catch {
           channel.nack(received, false, true);
+          recordQueueConsume({ datasetType: type, result: 'nack' });
         }
       }
     }

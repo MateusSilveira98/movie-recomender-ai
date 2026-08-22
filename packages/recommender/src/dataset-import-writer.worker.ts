@@ -1,5 +1,6 @@
 import { logger } from '@pkg/logger';
 import { createDatabaseClient } from '@pkg/database';
+import { startObservability } from '@pkg/observability';
 import { createDatasetImportWriteExecutor } from './workers/dataset/application/dataset-import-write-executor.service.js';
 import { createSqlDatasetImportCreditChunkHandler, createSqlDatasetImportGateway, createSqlDatasetImportLinkChunkHandler, createSqlDatasetImportMovieChunkHandler, createSqlDatasetImportRatingChunkHandler } from './workers/dataset/infrastructure/dataset-import-queue.adapter.js';
 import { consumeRabbitMqDatasetImportChunks } from './workers/dataset/infrastructure/messaging/rabbitmq-dataset-import-chunk-consumer.adapter.js';
@@ -104,7 +105,9 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-void run().catch((error: unknown) => {
-  logger.error({ component: 'dataset-import-writer', error: error instanceof Error ? error.name : 'UnknownError', event: 'worker_failed' });
-  process.exitCode = 1;
-});
+void startObservability({ serviceName: 'dataset-import-writer' })
+  .then(() => run())
+  .catch((error: unknown) => {
+    logger.error({ component: 'dataset-import-writer', error: error instanceof Error ? error.name : 'UnknownError', event: 'worker_failed' });
+    process.exitCode = 1;
+  });
