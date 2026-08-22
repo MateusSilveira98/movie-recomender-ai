@@ -10,18 +10,6 @@ on:
       - 'nx.json'
       - 'tsconfig.base.json'
       - '.github/workflows/frontend-ci.yml'
-  push:
-    branches:
-      - master
-    paths:
-      - 'apps/web/**'
-      - 'packages/shared/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'nx.json'
-      - 'tsconfig.base.json'
-      - '.github/workflows/frontend-ci.yml'
-
 permissions:
   contents: read
 
