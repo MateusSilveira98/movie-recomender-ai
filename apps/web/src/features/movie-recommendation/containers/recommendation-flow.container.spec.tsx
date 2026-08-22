@@ -51,6 +51,79 @@ describe('recommendation journey', () => {
     });
   });
 
+  describe('when loading genres fails', () => {
+    it('shows a recoverable error and loads the options after retrying', async () => {
+      let genreRequests = 0;
+      vi.stubGlobal('fetch', mockHttp({
+        'GET /genres': () => {
+          genreRequests += 1;
+          return genreRequests === 1
+            ? jsonResponse({ error: 'Generos indisponiveis.' }, 503)
+            : jsonResponse({ genres: ['Ficcao cientifica'] });
+        },
+        'GET /sessions/current': () => jsonResponse(currentSessionResponse({ session: null })),
+      }));
+
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(screen.getByRole('button', { name: 'Avancar' }));
+
+      expect(await screen.findByText('Nao foi possivel carregar os generos da API.')).toBeTruthy();
+
+      await user.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+
+      expect(await screen.findByRole('button', { name: 'Ficcao cientifica' })).toBeTruthy();
+    });
+  });
+
+  describe('when loading the movie catalog fails', () => {
+    it('shows a recoverable error and loads the catalog after retrying', async () => {
+      let catalogRequests = 0;
+      vi.stubGlobal('fetch', mockHttp({
+        'GET /genres': () => jsonResponse({ genres: ['Ficcao cientifica'] }),
+        'GET /movies?genres=Ficcao+cientifica&runtime=medium&limit=10': () => {
+          catalogRequests += 1;
+          return catalogRequests === 1
+            ? jsonResponse({ error: 'Catalogo indisponivel.' }, 503)
+            : jsonResponse({ movies: [recommendation] });
+        },
+        'GET /sessions/current': () => jsonResponse(currentSessionResponse({ session: null })),
+      }));
+
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(screen.getByRole('button', { name: 'Avancar' }));
+      await user.click(await screen.findByRole('button', { name: 'Continuar' }));
+
+      expect(await screen.findByText('Nao foi possivel carregar o catalogo de filmes da API.')).toBeTruthy();
+
+      await user.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+
+      expect(await screen.findByRole('checkbox', { name: /Horizonte/ })).toBeTruthy();
+    });
+  });
+
+  describe('when navigating back from watched movies', () => {
+    it('preserves the selected preferences', async () => {
+      vi.stubGlobal('fetch', mockHttp({
+        'GET /genres': () => jsonResponse({ genres: ['Ficcao cientifica', 'Drama'] }),
+        'GET /movies?genres=Ficcao+cientifica&runtime=medium&limit=10': () => jsonResponse({ movies: [recommendation] }),
+        'GET /sessions/current': () => jsonResponse(currentSessionResponse({ session: null })),
+      }));
+
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(screen.getByRole('button', { name: 'Avancar' }));
+      await screen.findByRole('button', { name: 'Ficcao cientifica' });
+      await user.click(screen.getByRole('button', { name: 'Continuar' }));
+      await screen.findByRole('checkbox', { name: /Horizonte/ });
+
+      await user.click(screen.getByRole('button', { name: 'Voltar' }));
+
+      expect((await screen.findByRole('button', { name: 'Continuar' })).hasAttribute('disabled')).toBe(false);
+    });
+  });
+
   describe('when creating a recommendation round', () => {
     it('sends the selected preferences and history', async () => {
       const requestLog: Array<{ body: string | null; csrf: string | null }> = [];
@@ -148,6 +221,42 @@ describe('recommendation journey', () => {
       await user.click(screen.getByRole('button', { name: 'Nao gostei de Horizonte' }));
 
       expect(await screen.findByText('Nao foi possivel salvar sua opiniao.')).toBeTruthy();
+    });
+  });
+
+  describe('when viewing an existing recommendation round', () => {
+    it('shows feedback and round history in their respective tabs', async () => {
+      vi.stubGlobal('fetch', mockHttp({
+        'GET /genres': () => jsonResponse({ genres: ['Ficcao cientifica'] }),
+        'GET /sessions/current': () => jsonResponse(currentSessionResponse({
+          session: createSession({ disliked: [], liked: ['movie-1'], watched: ['movie-1'] }),
+        })),
+      }));
+
+      const user = userEvent.setup();
+      render(<App />);
+      await screen.findByText('Horizonte (2024)');
+
+      await user.click(screen.getByRole('tab', { name: 'Gostei (1)' }));
+      expect(await screen.findByText('Filmes que vc marcou como gostei')).toBeTruthy();
+
+      await user.click(screen.getByRole('tab', { name: 'Historico (1)' }));
+      expect(await screen.findByText('Rodada 1')).toBeTruthy();
+    });
+
+    it('starts a new round with the preference step', async () => {
+      vi.stubGlobal('fetch', mockHttp({
+        'GET /genres': () => jsonResponse({ genres: ['Ficcao cientifica'] }),
+        'GET /sessions/current': () => jsonResponse(currentSessionResponse()),
+      }));
+
+      const user = userEvent.setup();
+      render(<App />);
+      await screen.findByText('Horizonte (2024)');
+
+      await user.click(screen.getByRole('button', { name: 'Nova rodada' }));
+
+      expect(await screen.findByText('Quais preferencias importam hoje?')).toBeTruthy();
     });
   });
 });
