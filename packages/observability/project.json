@@ -1,0 +1,15 @@
+{
+  "name": "observability",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "packages/observability/src",
+  "tags": ["scope:observability", "type:package"],
+  "targets": {
+    "test": {
+      "command": "tsx --tsconfig tsconfig.base.json --test packages/observability/src/observability-configuration.service.spec.ts packages/observability/src/exportable-span.policy.spec.ts"
+    },
+    "typecheck": {
+      "command": "tsc -p packages/observability/tsconfig.json --noEmit"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import type { Client } from '@libsql/client';
+import { recordImportJobSummary } from '@pkg/observability';
 import type {
   DatasetDependency,
   DatasetFailure,
@@ -108,6 +109,15 @@ export async function completeDatasetImportJob(client: Client, job: Pick<StoredD
     { sql: 'DELETE FROM dataset_import_rating_keys WHERE upload_id = ?', args: [job.uploadId] },
     { sql: 'DELETE FROM dataset_import_link_keys WHERE upload_id = ?', args: [job.uploadId] },
   ], 'write');
+
+  recordImportJobSummary({
+    imported: result.summary.imported,
+    jobId: job.id,
+    processed: result.summary.processed,
+    rejected: result.summary.rejected,
+    result: status,
+    waitingDependencies: result.summary.waitingDependencies,
+  });
 }
 
 export async function startDatasetImportJob(client: Client, job: Pick<StoredDatasetImportJob, 'id' | 'uploadId'>): Promise<void> {
@@ -176,6 +186,15 @@ export async function failDatasetImportJob(client: Client, job: Pick<StoredDatas
     { sql: 'DELETE FROM dataset_import_rating_keys WHERE upload_id = ?', args: [job.uploadId] },
     { sql: 'DELETE FROM dataset_import_link_keys WHERE upload_id = ?', args: [job.uploadId] },
   ], 'write');
+
+  recordImportJobSummary({
+    imported: 0,
+    jobId: job.id,
+    processed: 0,
+    rejected: 0,
+    result: 'error',
+    waitingDependencies: 0,
+  });
 }
 
 export async function requeueRetryableDatasetImportJob(client: Client, job: StoredDatasetImportJob, errorMessage: string): Promise<void> {

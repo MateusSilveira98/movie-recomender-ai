@@ -1,6 +1,6 @@
 COMPOSE_FILES := -f docker-compose.yml $(if $(wildcard docker-compose.override.yml),-f docker-compose.override.yml) $(if $(wildcard docker-compose.corporate-ca.yml),-f docker-compose.corporate-ca.yml)
 COMPOSE := docker compose $(COMPOSE_FILES)
-BACKEND_PROJECTS := bff,database,recommender,logger
+BACKEND_PROJECTS := bff,database,recommender,logger,observability,ml
 
 .DEFAULT_GOAL := help
 .PHONY: help build check lint test integration up up-recreate down ps logs logs-bff logs-database logs-worker logs-rabbitmq logs-queue migrate process-queue train
@@ -17,7 +17,7 @@ check: ## Executa a verificação de tipos do backend
 lint: check ## Executa a análise estática disponível (TypeScript)
 
 test: ## Executa as suítes de teste configuradas do backend
-	npx nx run-many -t test --projects=logger,recommender
+	npx nx run-many -t test --projects=logger,recommender,observability
 
 integration: ## Executa a integração isolada de importação concorrente
 	npx nx run recommender:integration

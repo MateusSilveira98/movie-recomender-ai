@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { logger } from '@pkg/logger';
+import { startObservability } from '@pkg/observability';
 import { materializeDatasetImportChunks } from './workers/dataset/infrastructure/data/dataset-import-chunk-materializer.service.js';
 import { hasValidUtf8Encoding, readCsvHeader } from './workers/dataset/infrastructure/data/csv.reader.js';
 import { validateDatasetHeaders } from './workers/dataset/infrastructure/validation/dataset-csv.validator.js';
@@ -16,10 +17,12 @@ const rabbitMqUrl = requiredEnvironment('RABBITMQ_URL');
 const storage = createStorage();
 const publisher = createRabbitMqNormalizedDatasetImportCommandPublisher(rabbitMqUrl);
 
-void consumeRabbitMqDatasetImportCommands(rabbitMqUrl, { process: processCommand }).catch((error: unknown) => {
-  logger.error({ component: 'dataset-import-reader', error: error instanceof Error ? error.name : 'UnknownError', event: 'worker_failed' });
-  process.exitCode = 1;
-});
+void startObservability({ serviceName: 'dataset-import-reader' })
+  .then(() => consumeRabbitMqDatasetImportCommands(rabbitMqUrl, { process: processCommand }))
+  .catch((error: unknown) => {
+    logger.error({ component: 'dataset-import-reader', error: error instanceof Error ? error.name : 'UnknownError', event: 'worker_failed' });
+    process.exitCode = 1;
+  });
 
 async function processCommand(command: DatasetImportCommand): Promise<void> {
   const directory = join(requiredEnvironment('UPLOAD_STORAGE_DIR'), 'reader-normalized', command.uploadId);
