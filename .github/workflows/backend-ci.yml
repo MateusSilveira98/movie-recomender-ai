@@ -16,24 +16,6 @@ on:
       - 'tsconfig.base.json'
       - '.github/workflows/backend-ci.yml'
       - '.github/workflows/backend-cd.yml'
-  push:
-    branches:
-      - master
-    paths:
-      - 'apps/bff/**'
-      - 'packages/database/**'
-      - 'packages/logger/**'
-      - 'packages/ml/**'
-      - 'packages/observability/**'
-      - 'packages/recommender/**'
-      - 'packages/shared/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'nx.json'
-      - 'tsconfig.base.json'
-      - '.github/workflows/backend-ci.yml'
-      - '.github/workflows/backend-cd.yml'
-
 permissions:
   contents: read
 
