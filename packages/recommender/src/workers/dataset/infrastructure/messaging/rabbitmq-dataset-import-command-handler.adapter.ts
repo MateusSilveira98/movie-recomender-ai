@@ -5,6 +5,7 @@ import type { NormalizedDatasetImportCommand } from '../../domain/dataset-import
 import { createDatasetImportChunksWithResult } from '../persistence/dataset-import-chunks.repository.js';
 import { createDatasetUploadWithJob, findDatasetUpload, startDatasetImportJob } from '../persistence/dataset-import-queue.repository.js';
 import { listDatasetImportChunks } from '../persistence/dataset-import-chunks.repository.js';
+import { resolveDatasetImportStoragePrefix } from '../../domain/dataset-import-storage-path.service.js';
 import { createDatasetImportStatusStore } from '../storage/dataset-import-status.store.js';
 import type { NormalizedDatasetImportCommandPublisher } from './rabbitmq-dataset-import-command.adapter.js';
 
@@ -67,6 +68,7 @@ export function createRabbitMqNormalizedDatasetImportCommandHandler(client: Clie
 
 function createStorage() {
   const bucket = requiredEnvironment('DATASET_IMPORT_STORAGE_BUCKET');
+  const prefix = resolveDatasetImportStoragePrefix();
   const client = new S3Client({
     credentials: {
       accessKeyId: requiredEnvironment('DATASET_IMPORT_STORAGE_ACCESS_KEY'),
@@ -76,7 +78,7 @@ function createStorage() {
     forcePathStyle: process.env.DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE !== 'false',
     region: process.env.DATASET_IMPORT_STORAGE_REGION ?? 'us-east-1',
   });
-  return { bucket, client, statusStore: createDatasetImportStatusStore(client, bucket) };
+  return { bucket, client, statusStore: createDatasetImportStatusStore(client, bucket, prefix) };
 }
 
 function requiredEnvironment(name: string): string {

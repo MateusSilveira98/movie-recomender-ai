@@ -4,8 +4,9 @@ import type { Client } from '@libsql/client';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
 import { logger } from '@pkg/logger';
 import { getTrainingPipelineStatus, type ModelRuntimeStatus } from '@pkg/ml';
-import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, type RecommendationRanker } from '@pkg/recommender';
+import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, getQstashConfiguration, type DatasetImportCommand, type QstashConfiguration, type RecommendationRanker } from '@pkg/recommender';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
+import { createQstashDatasetImportRoutes } from '../domains/dataset-imports/routes/qstash-dataset-imports.routes.js';
 import { createSqlMovieCatalogRepository } from '../domains/movies/repositories/movies.repository.js';
 import { createSqlSessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
 import { createAsyncHandler, createRequestLogger, requestErrorHandler } from '../middlewares/request-logger.middleware.js';
@@ -15,16 +16,20 @@ import { isAllowedWebOrigin } from './web-origin.js';
 interface AppDependencies {
   databaseClient?: Client;
   datasetImportAdminToken?: string;
+  datasetImportCommandProcessor?: (command: DatasetImportCommand) => Promise<void>;
   mlStatus?: ModelRuntimeStatus;
   processDatasetQueue?: boolean;
+  qstash?: QstashConfiguration | null;
   recommendationRanker?: RecommendationRanker;
 }
 
 export function createApp({
   databaseClient = createDatabaseClient(),
   datasetImportAdminToken = process.env.DATASET_IMPORT_ADMIN_TOKEN,
+  datasetImportCommandProcessor,
   mlStatus = getTrainingPipelineStatus(),
   processDatasetQueue = true,
+  qstash = getQstashConfiguration(),
   recommendationRanker = createRecommendationRanker(),
 }: AppDependencies = {}): express.Express {
   const app = express();
@@ -59,6 +64,7 @@ export function createApp({
       },
     }),
   );
+  app.use(createQstashDatasetImportRoutes(qstash, datasetImportCommandProcessor));
   app.use(express.json());
   app.use(createRequestLogger());
 

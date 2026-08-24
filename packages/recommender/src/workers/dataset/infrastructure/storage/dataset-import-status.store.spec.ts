@@ -8,7 +8,17 @@ describe('status durável de importação', () => {
       ['dataset-imports/ok/status.json', JSON.stringify(status('ok'))],
       ['dataset-imports/invalido/status.json', '{'],
     ]);
-    const store = createDatasetImportStatusStore(fakeClient(objects) as never, 'dataset-imports');
+    const store = createDatasetImportStatusStore(fakeClient(objects) as never, 'bucket', 'dataset-imports');
+
+    assert.deepEqual(await store.list(), [status('ok')]);
+  });
+
+  it('lists only statuses under the configured prefix', async () => {
+    const objects = new Map<string, string>([
+      ['dataset-imports/ok/status.json', JSON.stringify(status('ok'))],
+      ['other-prefix/ignored/status.json', JSON.stringify(status('ignored'))],
+    ]);
+    const store = createDatasetImportStatusStore(fakeClient(objects) as never, 'bucket', 'dataset-imports');
 
     assert.deepEqual(await store.list(), [status('ok')]);
   });

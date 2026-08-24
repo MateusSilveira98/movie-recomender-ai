@@ -9,8 +9,19 @@ import {
 
 export { createDatasetImportQueue, type DatasetImportQueue } from './workers/dataset/application/dataset-import-queue.service.js';
 export { createSqlDatasetImportGateway } from './workers/dataset/infrastructure/dataset-import-queue.adapter.js';
+export { createDatasetImportCommandPublisher } from './workers/dataset/application/services/create-dataset-import-command-publisher.service.js';
+export type { DatasetImportCommandPublisher } from './workers/dataset/application/ports/dataset-import-command-publisher.port.js';
 export { createRabbitMqDatasetImportCommandPublisher } from './workers/dataset/infrastructure/messaging/rabbitmq-dataset-import-command.adapter.js';
+export { getQstashConfiguration, qstashDatasetImportCommandUrl, type QstashConfiguration } from './workers/dataset/infrastructure/config/qstash-configuration.service.js';
+export { createQstashSignature, verifyQstashSignature } from './workers/dataset/infrastructure/messaging/qstash-signature.service.js';
+export { parseDatasetImportCommand, parseNormalizedDatasetImportCommand } from './workers/dataset/domain/dataset-import-command.parser.js';
 export { createDatasetImportStatusStore } from './workers/dataset/infrastructure/storage/dataset-import-status.store.js';
+export {
+  datasetImportNormalizedChunkObjectKey,
+  datasetImportStatusObjectKey,
+  datasetImportUploadObjectKey,
+  resolveDatasetImportStoragePrefix,
+} from './workers/dataset/domain/dataset-import-storage-path.service.js';
 export {
   DATASET_FILE_TYPES,
   type DatasetDiagnosticSummary,

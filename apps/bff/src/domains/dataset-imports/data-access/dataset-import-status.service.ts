@@ -1,6 +1,7 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import {
   createDatasetImportStatusStore,
+  resolveDatasetImportStoragePrefix,
   type DatasetImportPipelineStatus,
 } from '@pkg/recommender';
 
@@ -27,5 +28,5 @@ function createStore() {
     endpoint,
     forcePathStyle: process.env.DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE !== 'false',
     region: process.env.DATASET_IMPORT_STORAGE_REGION ?? 'us-east-1',
-  }), bucket);
+  }), bucket, resolveDatasetImportStoragePrefix());
 }

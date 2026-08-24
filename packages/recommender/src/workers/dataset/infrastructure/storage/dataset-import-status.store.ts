@@ -1,4 +1,5 @@
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { datasetImportStatusObjectKey, resolveDatasetImportStoragePrefix } from '../../domain/dataset-import-storage-path.service.js';
 import type { DatasetImportPipelineStatus } from '../../domain/dataset-import-status.types.js';
 
 const STATUS_SUFFIX = '/status.json';
@@ -9,7 +10,11 @@ export interface DatasetImportStatusStore {
   put(status: DatasetImportPipelineStatus): Promise<void>;
 }
 
-export function createDatasetImportStatusStore(client: S3Client, bucket: string): DatasetImportStatusStore {
+export function createDatasetImportStatusStore(
+  client: S3Client,
+  bucket: string,
+  prefix = resolveDatasetImportStoragePrefix(),
+): DatasetImportStatusStore {
   return { get, list, put };
 
   async function get(uploadId: string): Promise<DatasetImportPipelineStatus | null> {
@@ -31,7 +36,7 @@ export function createDatasetImportStatusStore(client: S3Client, bucket: string)
       const page = await client.send(new ListObjectsV2Command({
         Bucket: bucket,
         ContinuationToken: continuationToken,
-        Prefix: 'dataset-imports/',
+        Prefix: `${prefix}/`,
       }));
       const keys = page.Contents?.map((object) => object.Key).filter((key): key is string => Boolean(key?.endsWith(STATUS_SUFFIX))) ?? [];
       const pageStatuses = await Promise.all(keys.map(async (key) => {
@@ -53,10 +58,10 @@ export function createDatasetImportStatusStore(client: S3Client, bucket: string)
       Key: statusKey(status.id),
     }));
   }
-}
 
-function statusKey(uploadId: string): string {
-  return `dataset-imports/${uploadId}/status.json`;
+  function statusKey(uploadId: string): string {
+    return datasetImportStatusObjectKey(prefix, uploadId);
+  }
 }
 
 function parseStatus(value: string): DatasetImportPipelineStatus | null {
