@@ -1,5 +1,10 @@
 import { connect } from 'amqplib';
-import { DATASET_FILE_TYPES } from '../../domain/dataset-import-queue.types.js';
+import {
+  assertDatasetImportCommand,
+  assertNormalizedDatasetImportCommand,
+  parseDatasetImportCommand,
+  parseNormalizedDatasetImportCommand,
+} from '../../domain/dataset-import-command.parser.js';
 import type { DatasetImportCommand, NormalizedDatasetImportCommand } from '../../domain/dataset-import-command.types.js';
 
 const COMMAND_QUEUE = 'dataset-import.commands';
@@ -13,7 +18,7 @@ export interface NormalizedDatasetImportCommandPublisher {
 export function createRabbitMqDatasetImportCommandPublisher(amqpUrl: string) {
   return {
     async publish(command: DatasetImportCommand): Promise<void> {
-      assertCommand(command);
+      assertDatasetImportCommand(command);
       const connection = await connect(amqpUrl);
 
       try {
@@ -39,7 +44,7 @@ export function createRabbitMqNormalizedDatasetImportCommandPublisher(amqpUrl: s
       await this.publishMany([command]);
     },
     async publishMany(commands: readonly NormalizedDatasetImportCommand[]): Promise<void> {
-      for (const command of commands) assertNormalizedCommand(command);
+      for (const command of commands) assertNormalizedDatasetImportCommand(command);
       await publishMany(amqpUrl, NORMALIZED_COMMAND_QUEUE, commands, (command) => `${command.uploadId}:${command.completed ? 'completed' : command.chunks[0]?.sequence}`);
     },
   };
@@ -60,7 +65,7 @@ export async function consumeRabbitMqDatasetImportCommands(
   }, { noAck: false });
 
   async function handleDelivery(delivery: NonNullable<Parameters<Parameters<typeof channel.consume>[1]>[0]>): Promise<void> {
-    const command = parseCommand(delivery.content);
+    const command = parseCommandBuffer(delivery.content);
     if (!command) {
       channel.nack(delivery, false, false);
       return;
@@ -79,7 +84,7 @@ export async function consumeRabbitMqNormalizedDatasetImportCommands(
   amqpUrl: string,
   handler: { process(command: NormalizedDatasetImportCommand): Promise<void> },
 ): Promise<void> {
-  await consume(amqpUrl, NORMALIZED_COMMAND_QUEUE, parseNormalizedCommand, handler);
+  await consume(amqpUrl, NORMALIZED_COMMAND_QUEUE, parseNormalizedCommandBuffer, handler);
 }
 
 async function publishMany<T>(amqpUrl: string, queue: string, values: readonly T[], messageId: (value: T) => string): Promise<void> {
@@ -119,51 +124,22 @@ function waitForConnectionClose(connection: { once(event: 'close', listener: () 
   });
 }
 
-function parseCommand(content: Buffer): DatasetImportCommand | null {
+function parseCommandBuffer(content: Buffer): DatasetImportCommand | null {
   try {
-    const value: unknown = JSON.parse(content.toString('utf8'));
-    if (typeof value !== 'object' || value === null) return null;
-    const command = value as DatasetImportCommand;
-    return typeof command.uploadId === 'string' && command.uploadId.length > 0
-      && typeof command.objectKey === 'string' && command.objectKey.length > 0
-      && typeof command.fileName === 'string' && command.fileName.length > 0
-      && typeof command.sizeBytes === 'number' && Number.isSafeInteger(command.sizeBytes) && command.sizeBytes >= 0
-      && typeof command.type === 'string' && DATASET_FILE_TYPES.includes(command.type)
-      ? command
-      : null;
+    return parseDatasetImportCommand(JSON.parse(content.toString('utf8')));
   } catch {
     return null;
   }
 }
 
-function assertCommand(command: DatasetImportCommand): void {
-  if (!command.uploadId || !command.objectKey || !command.fileName || !Number.isSafeInteger(command.sizeBytes) || command.sizeBytes < 0 || !DATASET_FILE_TYPES.includes(command.type)) {
-    throw new Error('O comando de importação precisa conter metadados válidos.');
-  }
-}
-
-function parseNormalizedCommand(content: Buffer): NormalizedDatasetImportCommand | null {
+function parseNormalizedCommandBuffer(content: Buffer): NormalizedDatasetImportCommand | null {
   try {
-    const value: unknown = JSON.parse(content.toString('utf8'));
-    if (typeof value !== 'object' || value === null) return null;
-    const command = value as NormalizedDatasetImportCommand;
-    const completed = command.completed === true;
-    return typeof command.uploadId === 'string' && command.uploadId.length > 0
-      && typeof command.fileName === 'string' && command.fileName.length > 0
-      && typeof command.sizeBytes === 'number' && Number.isSafeInteger(command.sizeBytes) && command.sizeBytes >= 0
-      && typeof command.type === 'string' && DATASET_FILE_TYPES.includes(command.type)
-      && Array.isArray(command.chunks) && (completed || command.chunks.length > 0)
-    && command.chunks.every((chunk) => typeof chunk.payloadPath === 'string' && chunk.payloadPath.length > 0 && typeof chunk.contentHash === 'string' && Number.isInteger(chunk.sequence))
-      ? { ...command, completed, normalizedChunkCount: Number.isInteger(command.normalizedChunkCount) ? command.normalizedChunkCount : command.chunks.length } : null;
-  } catch { return null; }
+    return parseNormalizedDatasetImportCommand(JSON.parse(content.toString('utf8')));
+  } catch {
+    return null;
+  }
 }
 
 function isNonRetryable(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'nonRetryable' in error && error.nonRetryable === true;
-}
-
-function assertNormalizedCommand(command: NormalizedDatasetImportCommand): void {
-  if (!command.uploadId || !command.fileName || !Number.isSafeInteger(command.sizeBytes) || !DATASET_FILE_TYPES.includes(command.type) || (!command.completed && command.chunks.length === 0) || !Number.isInteger(command.normalizedChunkCount) || command.normalizedChunkCount < 0) {
-    throw new Error('O comando normalizado de importação é inválido.');
-  }
 }

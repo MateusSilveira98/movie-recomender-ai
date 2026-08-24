@@ -9,13 +9,19 @@
       "command": "tsx watch --tsconfig tsconfig.base.json apps/bff/src/main.ts"
     },
     "build": {
-      "command": "tsc -p apps/bff/tsconfig.json"
+      "command": "node apps/bff/esbuild.config.mjs"
+    },
+    "start": {
+      "command": "node dist/apps/bff/main.js"
     },
     "typecheck": {
       "command": "tsc -p apps/bff/tsconfig.json --noEmit"
     },
     "test": {
-      "command": "tsx --tsconfig tsconfig.base.json --test apps/bff/src/app/app.spec.ts apps/bff/src/domains/movies/repositories/movies.repository.spec.ts apps/bff/src/domains/sessions/repositories/sessions.repository.spec.ts apps/bff/src/domains/sessions/services/session-feedback.service.spec.ts"
+      "command": "tsx --tsconfig tsconfig.base.json --test apps/bff/src/app/app-startup.spec.ts apps/bff/src/domains/dataset-imports/dataset-imports.http.spec.ts apps/bff/src/domains/dataset-imports/qstash-dataset-imports.http.spec.ts apps/bff/src/domains/movies/repositories/movies.repository.spec.ts apps/bff/src/domains/sessions/sessions.http.spec.ts apps/bff/src/domains/sessions/repositories/sessions.repository.spec.ts apps/bff/src/domains/sessions/services/session-feedback.service.spec.ts"
+    },
+    "smoke": {
+      "command": "tsx --tsconfig tsconfig.base.json apps/bff/src/app/bff.smoke.ts"
     }
   }
 }

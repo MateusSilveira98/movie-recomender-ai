@@ -11,6 +11,7 @@ import { validateDatasetHeaders } from './workers/dataset/infrastructure/validat
 import { consumeRabbitMqDatasetImportCommands, createRabbitMqNormalizedDatasetImportCommandPublisher } from './workers/dataset/infrastructure/messaging/rabbitmq-dataset-import-command.adapter.js';
 import { createDatasetImportStatusStore } from './workers/dataset/infrastructure/storage/dataset-import-status.store.js';
 import type { DatasetImportCommand } from './workers/dataset/domain/dataset-import-command.types.js';
+import { datasetImportNormalizedChunkObjectKey, resolveDatasetImportStoragePrefix } from './workers/dataset/domain/dataset-import-storage-path.service.js';
 import type { DatasetImportPipelineStage } from './workers/dataset/domain/dataset-import-status.types.js';
 
 const rabbitMqUrl = requiredEnvironment('RABBITMQ_URL');
@@ -46,7 +47,7 @@ async function processCommand(command: DatasetImportCommand): Promise<void> {
     let normalizedChunks = 0;
     const pendingCommands: import('./workers/dataset/domain/dataset-import-command.types.js').NormalizedDatasetImportCommand[] = [];
     await materializeDatasetImportChunks(sourcePath, directory, async (chunk) => {
-      const objectKey = `dataset-imports/normalized/${command.uploadId}/chunk-${chunk.sequence}.jsonl`;
+      const objectKey = datasetImportNormalizedChunkObjectKey(storage.prefix, command.uploadId, chunk.sequence);
       const size = (await stat(chunk.payloadPath)).size;
       await storage.client.send(new PutObjectCommand({ Bucket: storage.bucket, Key: objectKey, Body: createReadStream(chunk.payloadPath), ContentLength: size, ContentType: 'application/x-ndjson' }));
       normalizedChunks += 1;
@@ -96,8 +97,9 @@ async function download(client: S3Client, bucket: string, objectKey: string, des
 
 function createStorage() {
   const bucket = requiredEnvironment('DATASET_IMPORT_STORAGE_BUCKET');
+  const prefix = resolveDatasetImportStoragePrefix();
   const client = new S3Client({ credentials: { accessKeyId: requiredEnvironment('DATASET_IMPORT_STORAGE_ACCESS_KEY'), secretAccessKey: requiredEnvironment('DATASET_IMPORT_STORAGE_SECRET_KEY') }, endpoint: requiredEnvironment('DATASET_IMPORT_STORAGE_ENDPOINT'), forcePathStyle: process.env.DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE !== 'false', region: process.env.DATASET_IMPORT_STORAGE_REGION ?? 'us-east-1' });
-  return { bucket, client, statusStore: createDatasetImportStatusStore(client, bucket) };
+  return { bucket, client, prefix, statusStore: createDatasetImportStatusStore(client, bucket, prefix) };
 }
 
 function requiredEnvironment(name: string): string {

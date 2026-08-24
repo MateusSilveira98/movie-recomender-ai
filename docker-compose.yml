@@ -53,13 +53,13 @@ services:
             "Action": ["s3:GetObject", "s3:PutObject"],
             "Resource": [
               "arn:aws:s3:::$${MODEL_STORAGE_BUCKET}/$${MODEL_STORAGE_PREFIX}/*",
-              "arn:aws:s3:::$${DATASET_IMPORT_STORAGE_BUCKET}/dataset-imports/*"
+              "arn:aws:s3:::$${DATASET_IMPORT_STORAGE_BUCKET}/$${DATASET_IMPORT_STORAGE_PREFIX}/*"
             ]
           }, {
             "Effect": "Allow",
             "Action": ["s3:ListBucket"],
             "Resource": ["arn:aws:s3:::$${DATASET_IMPORT_STORAGE_BUCKET}"],
-            "Condition": { "StringLike": { "s3:prefix": ["dataset-imports/*"] } }
+            "Condition": { "StringLike": { "s3:prefix": ["$${DATASET_IMPORT_STORAGE_PREFIX}/*"] } }
           }]
         }
         EOF
@@ -98,7 +98,18 @@ services:
   migrate:
     image: node:22.16.0-alpine
     working_dir: ${WORKSPACE_DIR}
-    command: sh -lc "npm ci --ignore-scripts --no-audit && ./node_modules/.bin/tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        lockfile_hash="$$(sha256sum package-lock.json | awk '{print $$1}')"
+
+        if [ ! -f node_modules/.movie-recommender-lockfile-hash ] || [ "$$(cat node_modules/.movie-recommender-lockfile-hash)" != "$$lockfile_hash" ]; then
+          npm ci --ignore-scripts --no-audit
+          printf '%s' "$$lockfile_hash" > node_modules/.movie-recommender-lockfile-hash
+        fi
+
+        exec ./node_modules/.bin/tsx --tsconfig tsconfig.base.json packages/database/src/apply-schema.ts
     environment:
       DATABASE_URL: ${DATABASE_URL}
     volumes:
@@ -130,6 +141,7 @@ services:
       DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
       DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
       DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_PREFIX: ${DATASET_IMPORT_STORAGE_PREFIX:-dataset-imports}
       DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
       DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
       RABBITMQ_URL: ${RABBITMQ_URL}
@@ -161,6 +173,7 @@ services:
       DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
       DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
       DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_PREFIX: ${DATASET_IMPORT_STORAGE_PREFIX:-dataset-imports}
       DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
       DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
       UPLOAD_STORAGE_DIR: ${UPLOAD_STORAGE_DIR}
@@ -185,6 +198,7 @@ services:
       DATASET_IMPORT_STORAGE_BUCKET: ${DATASET_IMPORT_STORAGE_BUCKET}
       DATASET_IMPORT_STORAGE_ENDPOINT: ${DATASET_IMPORT_STORAGE_ENDPOINT}
       DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE: ${DATASET_IMPORT_STORAGE_FORCE_PATH_STYLE}
+      DATASET_IMPORT_STORAGE_PREFIX: ${DATASET_IMPORT_STORAGE_PREFIX:-dataset-imports}
       DATASET_IMPORT_STORAGE_REGION: ${DATASET_IMPORT_STORAGE_REGION}
       DATASET_IMPORT_STORAGE_SECRET_KEY: ${MODEL_PUBLISHER_SECRET_KEY}
       UPLOAD_STORAGE_DIR: ${UPLOAD_STORAGE_DIR}

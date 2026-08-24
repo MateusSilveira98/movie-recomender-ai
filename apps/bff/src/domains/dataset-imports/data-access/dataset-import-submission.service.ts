@@ -1,7 +1,13 @@
 import { createReadStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { createDatasetImportStatusStore, createRabbitMqDatasetImportCommandPublisher, type DatasetFileType } from '@pkg/recommender';
+import {
+  createDatasetImportCommandPublisher,
+  createDatasetImportStatusStore,
+  datasetImportUploadObjectKey,
+  resolveDatasetImportStoragePrefix,
+  type DatasetFileType,
+} from '@pkg/recommender';
 
 export interface DatasetImportSubmissionInput {
   fileName: string;
@@ -20,8 +26,8 @@ export interface DatasetImportSubmission {
 
 export async function submitDatasetImport(input: DatasetImportSubmissionInput): Promise<DatasetImportSubmission> {
   const id = crypto.randomUUID();
-  const objectKey = `dataset-imports/${id}/${sanitizeFileName(input.fileName)}`;
   const storage = createStorage();
+  const objectKey = datasetImportUploadObjectKey(storage.prefix, id, sanitizeFileName(input.fileName));
 
   try {
     await storage.client.send(new PutObjectCommand({
@@ -55,6 +61,7 @@ export async function submitDatasetImport(input: DatasetImportSubmissionInput): 
 
 function createStorage() {
   const bucket = requiredEnvironment('DATASET_IMPORT_STORAGE_BUCKET');
+  const prefix = resolveDatasetImportStoragePrefix();
   const client = new S3Client({
     credentials: {
       accessKeyId: requiredEnvironment('DATASET_IMPORT_STORAGE_ACCESS_KEY'),
@@ -68,8 +75,9 @@ function createStorage() {
   return {
     bucket,
     client,
-    publisher: createRabbitMqDatasetImportCommandPublisher(requiredEnvironment('RABBITMQ_URL')),
-    statusStore: createDatasetImportStatusStore(client, bucket),
+    prefix,
+    publisher: createDatasetImportCommandPublisher(),
+    statusStore: createDatasetImportStatusStore(client, bucket, prefix),
   };
 }
 
