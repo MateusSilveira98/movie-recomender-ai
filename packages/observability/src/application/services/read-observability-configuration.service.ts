@@ -4,6 +4,7 @@ import {
   type ObservabilityConfiguration,
   type ObservabilityEnvironment,
 } from '../../domain/models/observability-configuration.model.js';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
 export function readObservabilityConfiguration(
   environment: ObservabilityEnvironment,
@@ -12,7 +13,7 @@ export function readObservabilityConfiguration(
   const appEnv = firstPresentText(environment.APP_ENV, environment.NODE_ENV) || 'development';
   const credentials = {
     endpoint: environment.OTEL_EXPORTER_OTLP_ENDPOINT?.trim() ?? '',
-    token: environment.AXIOM_TOKEN?.trim() ?? '',
+    token: resolveSecretEnvironmentValue(environment, 'AXIOM_TOKEN') ?? '',
   };
 
   return {

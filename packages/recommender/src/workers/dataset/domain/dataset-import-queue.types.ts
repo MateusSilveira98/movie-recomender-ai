@@ -97,6 +97,7 @@ export interface DatasetUploadInput {
   sizeBytes: number;
   storagePath: string;
   type: DatasetFileType;
+  uploadId?: string;
 }
 
 export interface DatasetImportResult {

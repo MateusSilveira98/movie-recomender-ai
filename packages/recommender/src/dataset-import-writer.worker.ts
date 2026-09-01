@@ -1,6 +1,7 @@
 import { logger } from '@pkg/logger';
 import { createDatabaseClient } from '@pkg/database';
 import { startObservability } from '@pkg/observability';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import { createDatasetImportWriteExecutor } from './workers/dataset/application/dataset-import-write-executor.service.js';
 import { createSqlDatasetImportCreditChunkHandler, createSqlDatasetImportGateway, createSqlDatasetImportLinkChunkHandler, createSqlDatasetImportMovieChunkHandler, createSqlDatasetImportRatingChunkHandler } from './workers/dataset/infrastructure/dataset-import-queue.adapter.js';
 import { consumeRabbitMqDatasetImportChunks } from './workers/dataset/infrastructure/messaging/rabbitmq-dataset-import-chunk-consumer.adapter.js';
@@ -100,7 +101,9 @@ function createPayloadReader() {
 }
 
 function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
+  const value = name === 'DATASET_IMPORT_STORAGE_ACCESS_KEY' || name === 'DATASET_IMPORT_STORAGE_SECRET_KEY'
+    ? resolveSecretEnvironmentValue(process.env, name)
+    : process.env[name]?.trim();
   if (!value) throw new Error(`${name} precisa ser configurada para o escritor de imports.`);
   return value;
 }

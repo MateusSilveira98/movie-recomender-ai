@@ -1,4 +1,5 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import {
   createDatasetImportStatusStore,
   resolveDatasetImportStoragePrefix,
@@ -17,8 +18,8 @@ export async function listDatasetImportStatuses(): Promise<DatasetImportPipeline
 
 function createStore() {
   const bucket = process.env.DATASET_IMPORT_STORAGE_BUCKET?.trim();
-  const accessKeyId = process.env.DATASET_IMPORT_STORAGE_ACCESS_KEY?.trim();
-  const secretAccessKey = process.env.DATASET_IMPORT_STORAGE_SECRET_KEY?.trim();
+  const accessKeyId = resolveSecretEnvironmentValue(process.env, 'DATASET_IMPORT_STORAGE_ACCESS_KEY');
+  const secretAccessKey = resolveSecretEnvironmentValue(process.env, 'DATASET_IMPORT_STORAGE_SECRET_KEY');
   const endpoint = process.env.DATASET_IMPORT_STORAGE_ENDPOINT?.trim();
 
   if (!bucket || !accessKeyId || !secretAccessKey || !endpoint) return null;

@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { logger } from '@pkg/logger';
 import { startObservability } from '@pkg/observability';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import { materializeDatasetImportChunks } from './workers/dataset/infrastructure/data/dataset-import-chunk-materializer.service.js';
 import { hasValidUtf8Encoding, readCsvHeader } from './workers/dataset/infrastructure/data/csv.reader.js';
 import { validateDatasetHeaders } from './workers/dataset/infrastructure/validation/dataset-csv.validator.js';
@@ -103,7 +104,9 @@ function createStorage() {
 }
 
 function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
+  const value = name === 'DATASET_IMPORT_STORAGE_ACCESS_KEY' || name === 'DATASET_IMPORT_STORAGE_SECRET_KEY'
+    ? resolveSecretEnvironmentValue(process.env, name)
+    : process.env[name]?.trim();
   if (!value) throw new Error(`${name} precisa ser configurada para o leitor de imports.`);
   return value;
 }
