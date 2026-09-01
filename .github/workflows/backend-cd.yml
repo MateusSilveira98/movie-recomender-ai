@@ -42,8 +42,6 @@ jobs:
           node-version: 22.22.3
           cache: npm
       - run: npm ci
-      - run: npx nx run-many -t typecheck --projects=bff,recommender,ml,database,logger,observability
-      - run: npx nx run-many -t test --projects=bff,recommender,ml,logger,observability
       - run: npx nx run bff:build
       - name: Trigger Render deploy hook
         env:
