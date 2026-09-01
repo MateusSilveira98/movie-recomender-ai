@@ -25,6 +25,7 @@ export function createQstashDatasetImportRoutes(
         response.status(204).end();
       } catch (error) {
         if (isNonRetryable(error)) {
+          response.set('Upstash-NonRetryable-Error', 'true');
           response.status(400).json({ error: 'O comando de importacao nao pode ser processado.' });
           return;
         }

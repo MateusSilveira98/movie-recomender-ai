@@ -18,7 +18,7 @@
       "command": "tsc -p apps/bff/tsconfig.json --noEmit"
     },
     "test": {
-      "command": "tsx --tsconfig tsconfig.base.json --test apps/bff/src/app/app-startup.spec.ts apps/bff/src/domains/dataset-imports/dataset-imports.http.spec.ts apps/bff/src/domains/dataset-imports/qstash-dataset-imports.http.spec.ts apps/bff/src/domains/movies/repositories/movies.repository.spec.ts apps/bff/src/domains/sessions/sessions.http.spec.ts apps/bff/src/domains/sessions/repositories/sessions.repository.spec.ts apps/bff/src/domains/sessions/services/session-feedback.service.spec.ts"
+      "command": "tsx --tsconfig tsconfig.base.json --test apps/bff/src/app/app-startup.spec.ts apps/bff/src/domains/dataset-imports/data-access/qstash-dataset-import-command-processor.service.spec.ts apps/bff/src/domains/dataset-imports/dataset-imports.http.spec.ts apps/bff/src/domains/dataset-imports/qstash-dataset-imports.http.spec.ts apps/bff/src/domains/movies/repositories/movies.repository.spec.ts apps/bff/src/domains/sessions/sessions.http.spec.ts apps/bff/src/domains/sessions/repositories/sessions.repository.spec.ts apps/bff/src/domains/sessions/services/session-feedback.service.spec.ts"
     },
     "smoke": {
       "command": "tsx --tsconfig tsconfig.base.json apps/bff/src/app/bff.smoke.ts"

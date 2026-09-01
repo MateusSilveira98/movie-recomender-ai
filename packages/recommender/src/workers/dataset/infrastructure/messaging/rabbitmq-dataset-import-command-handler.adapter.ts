@@ -1,4 +1,5 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import type { Client } from '@libsql/client';
 import type { DatasetImportChunkDispatcher } from '../../application/ports/dataset-import-chunk-dispatcher.port.js';
 import type { NormalizedDatasetImportCommand } from '../../domain/dataset-import-command.types.js';
@@ -82,7 +83,9 @@ function createStorage() {
 }
 
 function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
+  const value = name === 'DATASET_IMPORT_STORAGE_ACCESS_KEY' || name === 'DATASET_IMPORT_STORAGE_SECRET_KEY'
+    ? resolveSecretEnvironmentValue(process.env, name)
+    : process.env[name]?.trim();
   if (!value) throw new Error(`${name} precisa ser configurada para processar imports.`);
   return value;
 }

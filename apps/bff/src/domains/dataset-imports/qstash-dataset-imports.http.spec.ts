@@ -66,4 +66,34 @@ describe('QStash dataset import command HTTP API', () => {
       }
     });
   });
+
+  describe('invalid command processing', () => {
+    it('prevents QStash from retrying a non-retryable command', async () => {
+      const context = await createBffTestContext({
+        datasetImportCommandProcessor: async () => {
+          const error = new Error('Invalid CSV') as Error & { nonRetryable?: boolean };
+          error.nonRetryable = true;
+          throw error;
+        },
+        qstash,
+      });
+
+      try {
+        const body = JSON.stringify(command);
+        const response = await request(context, '/internal/qstash/dataset-imports/commands', {
+          body,
+          headers: {
+            'Content-Type': 'application/json',
+            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body),
+          },
+          method: 'POST',
+        });
+
+        assert.equal(response.status, 400);
+        assert.equal(response.headers.get('upstash-nonretryable-error'), 'true');
+      } finally {
+        await context.dispose();
+      }
+    });
+  });
 });

@@ -72,7 +72,7 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
     completeJob: (job, result) => completeDatasetImportJob(client, job, result),
     createCheckpoints: (job) => createCheckpoints(job),
     createDiagnostics: (uploadId) => createDatasetImportDiagnosticsCollector(client, uploadId),
-    createUpload: (upload) => createDatasetUploadWithJob(client, upload),
+    createUpload: (upload) => createDatasetUploadWithJob(client, upload, upload.uploadId),
     deleteTemporaryFile: removeTemporaryFile,
     failJob: (job, message, failures) => failDatasetImportJob(client, job, message, failures),
     findUpload: (uploadId) => findDatasetUpload(client, uploadId),

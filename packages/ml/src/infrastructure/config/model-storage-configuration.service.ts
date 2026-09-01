@@ -1,4 +1,5 @@
 import { normalizeModelArtifactPrefix, normalizeModelArtifactVersion } from '../../domain/services/model-artifact-path.service.js';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
 export interface ModelStorageConfiguration {
   accessKey: string;
@@ -36,14 +37,14 @@ export function getModelStorageConfiguration(environment: Environment = process.
   }
 
   return {
-    accessKey: requiredValue(environment.MODEL_STORAGE_ACCESS_KEY, 'MODEL_STORAGE_ACCESS_KEY'),
+    accessKey: requiredValue(resolveSecretEnvironmentValue(environment, 'MODEL_STORAGE_ACCESS_KEY'), 'MODEL_STORAGE_ACCESS_KEY'),
     artifactVersion: normalizeModelArtifactVersion(artifactVersion),
     bucket,
     endpoint,
     forcePathStyle: booleanValue(environment.MODEL_STORAGE_FORCE_PATH_STYLE, true),
     prefix: normalizeModelArtifactPrefix(optionalValue(environment.MODEL_STORAGE_PREFIX) ?? 'movie-recommender'),
     region,
-    secretKey: requiredValue(environment.MODEL_STORAGE_SECRET_KEY, 'MODEL_STORAGE_SECRET_KEY'),
+    secretKey: requiredValue(resolveSecretEnvironmentValue(environment, 'MODEL_STORAGE_SECRET_KEY'), 'MODEL_STORAGE_SECRET_KEY'),
   };
 }
 

@@ -1,0 +1,94 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/bff/**'
+      - 'packages/database/**'
+      - 'packages/logger/**'
+      - 'packages/ml/**'
+      - 'packages/observability/**'
+      - 'packages/recommender/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
+      - 'scripts/ci/affected-targets.sh'
+      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/backend-cd.yml'
+permissions:
+  contents: read
+
+jobs:
+  affected:
+    name: Detect affected backend projects
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.affected.outputs.build }}
+      lint: ${{ steps.affected.outputs.lint }}
+      typecheck: ${{ steps.affected.outputs.typecheck }}
+      test: ${{ steps.affected.outputs.test }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - run: npm ci
+      - id: affected
+        run: bash scripts/ci/affected-targets.sh "origin/${{ github.base_ref }}" HEAD "bff,recommender,ml,database,logger,observability,shared"
+  lint:
+    name: Lint backend
+    needs: affected
+    if: needs.affected.outputs.lint != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - run: npm ci
+      - run: npx nx run-many -t lint --projects="${{ needs.affected.outputs.lint }}" --outputStyle=static
+  typecheck:
+    name: Typecheck backend
+    needs: affected
+    if: needs.affected.outputs.typecheck != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - run: npm ci
+      - run: npx nx run-many -t typecheck --projects="${{ needs.affected.outputs.typecheck }}" --outputStyle=static
+  test:
+    name: Test backend
+    needs: affected
+    if: needs.affected.outputs.test != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - run: npm ci
+      - run: npx nx run-many -t test --projects="${{ needs.affected.outputs.test }}" --outputStyle=static
+  build:
+    name: Build backend
+    needs: affected
+    if: needs.affected.outputs.build != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - run: npm ci
+      - run: npx nx run-many -t build --projects="${{ needs.affected.outputs.build }}" --outputStyle=static

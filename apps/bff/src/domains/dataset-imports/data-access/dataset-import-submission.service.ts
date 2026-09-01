@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import {
   createDatasetImportCommandPublisher,
   createDatasetImportStatusStore,
@@ -82,7 +83,9 @@ function createStorage() {
 }
 
 function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
+  const value = name === 'DATASET_IMPORT_STORAGE_ACCESS_KEY' || name === 'DATASET_IMPORT_STORAGE_SECRET_KEY'
+    ? resolveSecretEnvironmentValue(process.env, name)
+    : process.env[name]?.trim();
   if (!value) throw new Error(`${name} precisa ser configurada para importar datasets.`);
   return value;
 }

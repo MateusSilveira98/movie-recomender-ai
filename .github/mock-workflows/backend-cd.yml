@@ -1,0 +1,66 @@
+name: Backend CD
+
+on:
+  push:
+    tags:
+      - 'backend-v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag backend-v* to deploy or redeploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy backend
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate backend tag
+        env:
+          TAG: ${{ inputs.ref || github.ref_name }}
+        run: |
+          case "$TAG" in
+            backend-v*) ;;
+            *)
+              echo "A tag precisa começar com backend-v."
+              exit 1
+              ;;
+          esac
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.ref || github.ref_name }}
+      - uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - run: npm ci
+      - run: npx nx run bff:build
+      - name: Trigger Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          test -n "$RENDER_DEPLOY_HOOK_URL"
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+      - name: Smoke published healthcheck
+        env:
+          BFF_SMOKE_BASE_URL: ${{ vars.BFF_SMOKE_BASE_URL || vars.VITE_API_BASE_URL }}
+        run: |
+          test -n "$BFF_SMOKE_BASE_URL"
+          attempt=1
+          while [ "$attempt" -le 40 ]; do
+            if npx nx run bff:smoke; then
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+            sleep 15
+          done
+          echo "O smoke do BFF não passou após o deploy."
+          exit 1

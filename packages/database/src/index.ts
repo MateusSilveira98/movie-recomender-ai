@@ -1,4 +1,5 @@
 import { createClient, type Client } from '@libsql/client';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
 export interface DatabaseHealth {
   provider: 'local-libsql' | 'remote-turso';
@@ -46,7 +47,8 @@ export function resolveDatabaseUrl(): string {
 }
 
 export function resolveDatabaseAuthToken(): string | undefined {
-  return process.env.DATABASE_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN;
+  return resolveSecretEnvironmentValue(process.env, 'DATABASE_AUTH_TOKEN')
+    ?? resolveSecretEnvironmentValue(process.env, 'TURSO_AUTH_TOKEN');
 }
 
 export function createDatabaseClient(databaseUrl = resolveDatabaseUrl()): Client {

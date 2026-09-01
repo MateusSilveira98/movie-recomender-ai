@@ -6,7 +6,9 @@ import { logger } from '@pkg/logger';
 import { getTrainingPipelineStatus, type ModelRuntimeStatus } from '@pkg/ml';
 import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, getQstashConfiguration, type DatasetImportCommand, type QstashConfiguration, type RecommendationRanker } from '@pkg/recommender';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import { createQstashDatasetImportRoutes } from '../domains/dataset-imports/routes/qstash-dataset-imports.routes.js';
+import { createQstashDatasetImportCommandProcessor } from '../domains/dataset-imports/data-access/qstash-dataset-import-command-processor.service.js';
 import { createSqlMovieCatalogRepository } from '../domains/movies/repositories/movies.repository.js';
 import { createSqlSessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
 import { createAsyncHandler, createRequestLogger, requestErrorHandler } from '../middlewares/request-logger.middleware.js';
@@ -25,7 +27,7 @@ interface AppDependencies {
 
 export function createApp({
   databaseClient = createDatabaseClient(),
-  datasetImportAdminToken = process.env.DATASET_IMPORT_ADMIN_TOKEN,
+  datasetImportAdminToken = resolveSecretEnvironmentValue(process.env, 'DATASET_IMPORT_ADMIN_TOKEN'),
   datasetImportCommandProcessor,
   mlStatus = getTrainingPipelineStatus(),
   processDatasetQueue = true,
@@ -36,8 +38,10 @@ export function createApp({
   const datasetImportQueue = createDatasetImportQueue(
     createSqlDatasetImportGateway(databaseClient),
     undefined,
-    { autoProcess: processDatasetQueue },
+    { autoProcess: processDatasetQueue && !qstash },
   );
+  const qstashCommandProcessor = datasetImportCommandProcessor
+    ?? (qstash ? createQstashDatasetImportCommandProcessor(datasetImportQueue) : undefined);
   const movieCatalogRepository = createSqlMovieCatalogRepository(databaseClient);
   const sessionRepository = createSqlSessionRepository(databaseClient);
 
@@ -64,7 +68,7 @@ export function createApp({
       },
     }),
   );
-  app.use(createQstashDatasetImportRoutes(qstash, datasetImportCommandProcessor));
+  app.use(createQstashDatasetImportRoutes(qstash, qstashCommandProcessor));
   app.use(express.json());
   app.use(createRequestLogger());
 
