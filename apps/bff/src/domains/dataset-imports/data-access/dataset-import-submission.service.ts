@@ -9,6 +9,7 @@ import {
   resolveDatasetImportStoragePrefix,
   type DatasetFileType,
 } from '@pkg/recommender';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
 export interface DatasetImportSubmissionInput {
   fileName: string;
