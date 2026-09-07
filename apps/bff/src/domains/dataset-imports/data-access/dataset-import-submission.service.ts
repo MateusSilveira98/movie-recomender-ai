@@ -1,7 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import {
   createDatasetImportCommandPublisher,
   createDatasetImportStatusStore,
