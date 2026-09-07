@@ -1,10 +1,10 @@
 import { S3Client } from '@aws-sdk/client-s3';
-import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import {
   createDatasetImportStatusStore,
   resolveDatasetImportStoragePrefix,
   type DatasetImportPipelineStatus,
 } from '@pkg/recommender';
+import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
 export async function findDatasetImportStatus(uploadId: string): Promise<DatasetImportPipelineStatus | null> {
   const store = createStore();
