@@ -11,7 +11,7 @@ export function createQstashDatasetImportRoutes(
 
   router.post(
     '/internal/qstash/dataset-imports/commands',
-    express.raw({ type: 'application/json' }),
+    express.raw({ limit: '1mb', type: () => true }),
     createQstashSignatureMiddleware(configuration),
     createAsyncHandler(async (request, response) => {
       const command = parseDatasetImportCommand(request.body);
