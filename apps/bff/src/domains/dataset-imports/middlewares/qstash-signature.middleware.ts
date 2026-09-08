@@ -15,7 +15,6 @@ export function createQstashSignatureMiddleware(configuration: QstashConfigurati
     if (!(await verifyQstashSignature(configuration, {
       body,
       signature,
-      upstashRegion: request.get('upstash-region') ?? undefined,
       url: destination,
     }))) {
       response.status(401).json({ error: 'Assinatura QStash invalida.' });

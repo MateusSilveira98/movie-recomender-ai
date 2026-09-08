@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { Receiver } from '@upstash/qstash';
 
 export interface QstashSignatureKeys {
@@ -10,7 +10,6 @@ export interface QstashSignatureInput {
   body: string;
   clockToleranceSeconds?: number;
   signature: string;
-  upstashRegion?: string;
   url?: string;
 }
 
@@ -28,7 +27,6 @@ export async function verifyQstashSignature(keys: QstashSignatureKeys, input: Qs
       body: input.body,
       clockTolerance: input.clockToleranceSeconds ?? 30,
       signature,
-      upstashRegion: input.upstashRegion,
       url: input.url,
     });
     return true;
