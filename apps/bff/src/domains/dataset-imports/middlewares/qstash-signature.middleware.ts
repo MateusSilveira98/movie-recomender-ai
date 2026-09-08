@@ -1,17 +1,23 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { verifyQstashSignature, type QstashConfiguration } from '@pkg/recommender';
+import { qstashDatasetImportCommandUrl, verifyQstashSignature, type QstashConfiguration } from '@pkg/recommender';
 
 export function createQstashSignatureMiddleware(configuration: QstashConfiguration | null): RequestHandler {
-  return (request: Request, response: Response, next: NextFunction) => {
+  return async (request: Request, response: Response, next: NextFunction) => {
     if (!configuration) {
       response.status(503).json({ error: 'QStash nao configurado.' });
       return;
     }
 
     const signature = request.get('upstash-signature') ?? '';
-    const body = Buffer.isBuffer(request.body) ? request.body.toString('utf8') : '';
+    const body = readRawRequestBody(request);
+    const destination = qstashDatasetImportCommandUrl(configuration);
 
-    if (!verifyQstashSignature(configuration, { body, signature })) {
+    if (!(await verifyQstashSignature(configuration, {
+      body,
+      signature,
+      upstashRegion: request.get('upstash-region') ?? undefined,
+      url: destination,
+    }))) {
       response.status(401).json({ error: 'Assinatura QStash invalida.' });
       return;
     }
@@ -25,4 +31,16 @@ export function createQstashSignatureMiddleware(configuration: QstashConfigurati
 
     next();
   };
+}
+
+function readRawRequestBody(request: Request): string {
+  if (Buffer.isBuffer(request.body)) {
+    return request.body.toString('utf8');
+  }
+
+  if (typeof request.body === 'string') {
+    return request.body;
+  }
+
+  return '';
 }

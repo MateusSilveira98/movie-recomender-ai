@@ -18,6 +18,7 @@ const command = {
   type: 'ratings',
   uploadId: 'upload-1',
 };
+const destination = `${qstash.callbackBaseUrl}/internal/qstash/dataset-imports/commands`;
 
 describe('QStash dataset import command HTTP API', () => {
   describe('signature verification', () => {
@@ -54,7 +55,7 @@ describe('QStash dataset import command HTTP API', () => {
           body,
           headers: {
             'Content-Type': 'application/json',
-            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body),
+            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body, destination),
           },
           method: 'POST',
         });
@@ -84,7 +85,7 @@ describe('QStash dataset import command HTTP API', () => {
           body,
           headers: {
             'Content-Type': 'application/json',
-            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body),
+            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body, destination),
           },
           method: 'POST',
         });

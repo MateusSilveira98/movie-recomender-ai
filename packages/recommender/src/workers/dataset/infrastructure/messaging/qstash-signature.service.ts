@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { Receiver } from '@upstash/qstash';
 
 export interface QstashSignatureKeys {
   currentSigningKey: string;
@@ -9,14 +10,31 @@ export interface QstashSignatureInput {
   body: string;
   clockToleranceSeconds?: number;
   signature: string;
+  upstashRegion?: string;
   url?: string;
 }
 
-export function verifyQstashSignature(keys: QstashSignatureKeys, input: QstashSignatureInput): boolean {
+export async function verifyQstashSignature(keys: QstashSignatureKeys, input: QstashSignatureInput): Promise<boolean> {
   const signature = input.signature.trim();
   if (!signature) return false;
 
-  return [keys.currentSigningKey, keys.nextSigningKey].some((key) => verifyWithKey(key, input, signature));
+  const receiver = new Receiver({
+    currentSigningKey: keys.currentSigningKey,
+    nextSigningKey: keys.nextSigningKey,
+  });
+
+  try {
+    await receiver.verify({
+      body: input.body,
+      clockTolerance: input.clockToleranceSeconds ?? 30,
+      signature,
+      upstashRegion: input.upstashRegion,
+      url: input.url,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function createQstashSignature(signingKey: string, body: string, url?: string, issuedAt = Math.floor(Date.now() / 1000)): string {
@@ -33,26 +51,6 @@ export function createQstashSignature(signingKey: string, body: string, url?: st
   return `${unsigned}.${sign(unsigned, signingKey)}`;
 }
 
-function verifyWithKey(signingKey: string, input: QstashSignatureInput, signature: string): boolean {
-  const [header, payload, digest] = signature.split('.');
-  if (!header || !payload || !digest) return false;
-
-  const expected = sign(`${header}.${payload}`, signingKey);
-  if (!safeEqual(digest, expected)) return false;
-
-  const claims = decodePayload(payload);
-  if (!claims) return false;
-
-  const now = Math.floor(Date.now() / 1000);
-  const tolerance = input.clockToleranceSeconds ?? 30;
-  if (typeof claims.exp === 'number' && now > claims.exp + tolerance) return false;
-  if (typeof claims.nbf === 'number' && now + tolerance < claims.nbf) return false;
-  if (claims.body !== hashBody(input.body)) return false;
-  if (input.url && claims.sub && claims.sub !== input.url) return false;
-
-  return true;
-}
-
 function hashBody(body: string): string {
   return createHash('sha256').update(body).digest('base64url');
 }
@@ -63,19 +61,4 @@ function sign(value: string, signingKey: string): string {
 
 function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-function decodePayload(payload: string): { body?: unknown; exp?: unknown; nbf?: unknown; sub?: unknown } | null {
-  try {
-    const value: unknown = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    return typeof value === 'object' && value !== null ? value as { body?: unknown; exp?: unknown; nbf?: unknown; sub?: unknown } : null;
-  } catch {
-    return null;
-  }
-}
-
-function safeEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
