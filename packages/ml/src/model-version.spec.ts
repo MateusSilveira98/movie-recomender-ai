@@ -24,8 +24,8 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
 });
 
-describe('catálogo de versões do modelo', () => {
-  it('gera versão imutável a partir de data, commit e workflow run', () => {
+describe('model version catalog', () => {
+  it('generates an immutable version from date, commit and workflow run', () => {
     assert.equal(
       buildModelArtifactVersion({
         commitSha: 'abcdef1234567890',
@@ -36,7 +36,7 @@ describe('catálogo de versões do modelo', () => {
     );
   });
 
-  it('controla as transições válidas de status', () => {
+  it('allows only valid status transitions', () => {
     assert.doesNotThrow(() => assertModelVersionTransition('candidate', 'active'));
     assert.doesNotThrow(() => assertModelVersionTransition('candidate', 'failed'));
     assert.doesNotThrow(() => assertModelVersionTransition('active', 'archived'));
@@ -45,7 +45,7 @@ describe('catálogo de versões do modelo', () => {
     assert.throws(() => assertModelVersionTransition('active', 'failed'));
   });
 
-  it('registra candidata, promove e arquiva a versão ativa anterior', async () => {
+  it('registers a candidate, promotes it and archives the previous active version', async () => {
     const context = await createCatalogContext();
 
     try {
@@ -77,7 +77,7 @@ describe('catálogo de versões do modelo', () => {
     }
   });
 
-  it('não permite sobrescrever uma versão já registrada', async () => {
+  it('does not allow overwriting an already registered version', async () => {
     const context = await createCatalogContext();
 
     try {
@@ -100,7 +100,7 @@ describe('catálogo de versões do modelo', () => {
     }
   });
 
-  it('publica, valida e promove sem alterar a ativa quando a validação falha', async () => {
+  it('publishes, validates and promotes without changing active when validation fails', async () => {
     const directory = await createArtifactDirectory();
     directories.push(directory);
     const context = await createCatalogContext();
@@ -151,61 +151,36 @@ describe('catálogo de versões do modelo', () => {
     }
   });
 
-  it('usa MODEL_VERSION como override e mantém fallback sem versão ativa', async () => {
-    const directory = await createArtifactDirectory();
-    directories.push(directory);
-    const storage = new InMemoryModelArtifactStorage();
-    const versions = new InMemoryModelVersionRepository();
-
-    await publishAndActivateModel({
-      artifactDirectory: directory,
-      artifactVersion: 'catalog-active',
-      modelScoreProviderFactory: { create: createTensorflowModelScoreProvider },
-      now: new Date('2026-10-02T12:00:00.000Z'),
-      storage,
-      storagePrefix: ARTIFACT_PREFIX,
-      versions,
-    });
-
-    const environment = {
-      MODEL_STORAGE_ACCESS_KEY: 'access',
-      MODEL_STORAGE_BUCKET: 'models',
-      MODEL_STORAGE_ENDPOINT: 'http://localhost:9000',
-      MODEL_STORAGE_SECRET_KEY: 'secret',
+  it('uses MODEL_VERSION as an operational override', async () => {
+    const { storage, versions } = await publishCatalogActiveArtifact();
+    const runtime = await loadModelRuntimeFromEnvironment({
+      ...modelStorageEnvironment(),
       MODEL_VERSION: 'catalog-active',
-    };
-
-    const withOverride = await loadModelRuntimeFromEnvironment(environment, {
+    }, {
       createStorage: () => storage,
       versions,
     });
 
     try {
-      assert.equal(withOverride.status.status, 'loaded');
-      assert.equal(withOverride.status.modelVersion, 'catalog-active');
+      assert.equal(runtime.status.status, 'loaded');
+      assert.equal(runtime.status.modelVersion, 'catalog-active');
     } finally {
-      withOverride.dispose();
+      runtime.dispose();
     }
+  });
 
-    const withoutActive = await loadModelRuntimeFromEnvironment({
-      MODEL_STORAGE_ACCESS_KEY: 'access',
-      MODEL_STORAGE_BUCKET: 'models',
-      MODEL_STORAGE_ENDPOINT: 'http://localhost:9000',
-      MODEL_STORAGE_SECRET_KEY: 'secret',
-    }, {
-      createStorage: () => storage,
+  it('falls back when there is no active model version', async () => {
+    const runtime = await loadModelRuntimeFromEnvironment(modelStorageEnvironment(), {
+      createStorage: () => new InMemoryModelArtifactStorage(),
       versions: new InMemoryModelVersionRepository(),
     });
 
-    assert.equal(withoutActive.status.status, 'fallback');
+    assert.equal(runtime.status.status, 'fallback');
+  });
 
-    const tursoFailure = await loadModelRuntimeFromEnvironment({
-      MODEL_STORAGE_ACCESS_KEY: 'access',
-      MODEL_STORAGE_BUCKET: 'models',
-      MODEL_STORAGE_ENDPOINT: 'http://localhost:9000',
-      MODEL_STORAGE_SECRET_KEY: 'secret',
-    }, {
-      createStorage: () => storage,
+  it('falls back when Turso active version lookup fails', async () => {
+    const runtime = await loadModelRuntimeFromEnvironment(modelStorageEnvironment(), {
+      createStorage: () => new InMemoryModelArtifactStorage(),
       versions: {
         findActive: async () => {
           throw new Error('Turso unavailable');
@@ -219,22 +194,52 @@ describe('catálogo de versões do modelo', () => {
       },
     });
 
-    assert.equal(tursoFailure.status.status, 'fallback');
+    assert.equal(runtime.status.status, 'fallback');
+  });
 
-    const missingObject = await loadModelRuntimeFromEnvironment({
-      MODEL_STORAGE_ACCESS_KEY: 'access',
-      MODEL_STORAGE_BUCKET: 'models',
-      MODEL_STORAGE_ENDPOINT: 'http://localhost:9000',
-      MODEL_STORAGE_SECRET_KEY: 'secret',
+  it('falls back when the configured model artifact is missing in storage', async () => {
+    const runtime = await loadModelRuntimeFromEnvironment({
+      ...modelStorageEnvironment(),
       MODEL_VERSION: 'missing-version',
     }, {
       createStorage: () => new InMemoryModelArtifactStorage(),
-      versions,
+      versions: new InMemoryModelVersionRepository(),
     });
 
-    assert.equal(missingObject.status.status, 'fallback');
+    assert.equal(runtime.status.status, 'fallback');
   });
 });
+
+function modelStorageEnvironment(): Record<string, string> {
+  return {
+    MODEL_STORAGE_ACCESS_KEY: 'access',
+    MODEL_STORAGE_BUCKET: 'models',
+    MODEL_STORAGE_ENDPOINT: 'http://localhost:9000',
+    MODEL_STORAGE_SECRET_KEY: 'secret',
+  };
+}
+
+async function publishCatalogActiveArtifact(): Promise<{
+  storage: InMemoryModelArtifactStorage;
+  versions: InMemoryModelVersionRepository;
+}> {
+  const directory = await createArtifactDirectory();
+  directories.push(directory);
+  const storage = new InMemoryModelArtifactStorage();
+  const versions = new InMemoryModelVersionRepository();
+
+  await publishAndActivateModel({
+    artifactDirectory: directory,
+    artifactVersion: 'catalog-active',
+    modelScoreProviderFactory: { create: createTensorflowModelScoreProvider },
+    now: new Date('2026-10-02T12:00:00.000Z'),
+    storage,
+    storagePrefix: ARTIFACT_PREFIX,
+    versions,
+  });
+
+  return { storage, versions };
+}
 
 async function createCatalogContext(): Promise<{ client: Client; versions: ModelVersionRepository }> {
   const directory = await mkdtemp(join(tmpdir(), 'model-versions-'));

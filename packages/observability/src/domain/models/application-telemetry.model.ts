@@ -31,7 +31,7 @@ export interface ActiveModelMetric {
 
 export interface TrainingJobMetric {
   durationSeconds: number;
-  result: 'failed' | 'trained';
+  result: 'active' | 'failed' | 'trained';
 }
 
 export type QueueConsumeResult = 'ack' | 'nack' | 'retry';

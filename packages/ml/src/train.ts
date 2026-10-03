@@ -83,7 +83,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   void startObservability({ serviceName: 'train' })
     .then(() => runTrainingJob())
     .then(async (result) => {
-      recordTrainingJob({ durationSeconds: (Date.now() - startedAt) / 1000, result: 'trained' });
+      recordTrainingJob({ durationSeconds: (Date.now() - startedAt) / 1000, result: result.status });
       console.log(JSON.stringify(result, null, 2));
       await stopObservability();
     })
