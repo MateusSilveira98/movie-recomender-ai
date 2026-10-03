@@ -406,6 +406,17 @@ CREATE TABLE IF NOT EXISTS recommendation_impression_feedbacks (
   updated_at_ms INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS model_versions (
+  version TEXT PRIMARY KEY,
+  manifest_key TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('candidate', 'active', 'failed', 'archived')),
+  source_commit_sha TEXT,
+  workflow_run_id TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  activated_at TEXT,
+  failure_reason TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_movie_genres_genre_name ON movie_genres (genre_name);
 CREATE INDEX IF NOT EXISTS idx_movie_cast_person_name ON movie_cast (person_name);
 CREATE INDEX IF NOT EXISTS idx_movie_crew_person_name ON movie_crew (person_name);
@@ -432,3 +443,5 @@ CREATE INDEX IF NOT EXISTS idx_session_preferences_session_id ON session_prefere
 CREATE INDEX IF NOT EXISTS idx_session_movie_feedback_session_id ON session_movie_feedback (session_id);
 CREATE INDEX IF NOT EXISTS idx_recommendation_events_session_id ON recommendation_events (session_id);
 CREATE INDEX IF NOT EXISTS idx_recommendation_feedback_event_id ON recommendation_feedback (recommendation_event_id);
+CREATE INDEX IF NOT EXISTS idx_model_versions_status_created_at ON model_versions (status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_model_versions_single_active ON model_versions (status) WHERE status = 'active';

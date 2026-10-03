@@ -1,9 +1,9 @@
 import { normalizeModelArtifactPrefix, normalizeModelArtifactVersion } from '../../domain/services/model-artifact-path.service.js';
+import { buildModelArtifactVersion } from '../../domain/services/model-version-id.service.js';
 import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
 export interface ModelStorageConfiguration {
   accessKey: string;
-  artifactVersion: string;
   bucket: string;
   endpoint: string;
   forcePathStyle: boolean;
@@ -18,9 +18,7 @@ const BUCKET_PATTERN = /^(?=.{3,63}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const LOCAL_HTTP_HOSTS = new Set(['localhost', 'minio', '127.0.0.1']);
 
 export function getModelStorageConfiguration(environment: Environment = process.env): ModelStorageConfiguration | null {
-  const artifactVersion = optionalValue(environment.MODEL_VERSION);
-
-  if (!artifactVersion) {
+  if (!hasModelStorageCredentials(environment)) {
     return null;
   }
 
@@ -38,7 +36,6 @@ export function getModelStorageConfiguration(environment: Environment = process.
 
   return {
     accessKey: requiredValue(resolveSecretEnvironmentValue(environment, 'MODEL_STORAGE_ACCESS_KEY'), 'MODEL_STORAGE_ACCESS_KEY'),
-    artifactVersion: normalizeModelArtifactVersion(artifactVersion),
     bucket,
     endpoint,
     forcePathStyle: booleanValue(environment.MODEL_STORAGE_FORCE_PATH_STYLE, true),
@@ -46,6 +43,42 @@ export function getModelStorageConfiguration(environment: Environment = process.
     region,
     secretKey: requiredValue(resolveSecretEnvironmentValue(environment, 'MODEL_STORAGE_SECRET_KEY'), 'MODEL_STORAGE_SECRET_KEY'),
   };
+}
+
+export function resolveConfiguredModelVersion(environment: Environment = process.env): string | undefined {
+  const configured = optionalValue(environment.MODEL_VERSION);
+
+  if (configured) {
+    return normalizeModelArtifactVersion(configured);
+  }
+
+  return undefined;
+}
+
+export function resolveTrainingArtifactVersion(environment: Environment = process.env, now = new Date()): string | undefined {
+  const configured = resolveConfiguredModelVersion(environment);
+
+  if (configured) {
+    return configured;
+  }
+
+  const commitSha = optionalValue(environment.SOURCE_COMMIT_SHA) ?? optionalValue(environment.GITHUB_SHA);
+  const workflowRunId = optionalValue(environment.WORKFLOW_RUN_ID) ?? optionalValue(environment.GITHUB_RUN_ID);
+
+  if (!commitSha || !workflowRunId) {
+    return undefined;
+  }
+
+  return buildModelArtifactVersion({ commitSha, date: now, workflowRunId });
+}
+
+function hasModelStorageCredentials(environment: Environment): boolean {
+  return Boolean(
+    optionalValue(environment.MODEL_STORAGE_ENDPOINT)
+    && optionalValue(environment.MODEL_STORAGE_BUCKET)
+    && optionalValue(resolveSecretEnvironmentValue(environment, 'MODEL_STORAGE_ACCESS_KEY'))
+    && optionalValue(resolveSecretEnvironmentValue(environment, 'MODEL_STORAGE_SECRET_KEY')),
+  );
 }
 
 function booleanValue(value: string | undefined, defaultValue: boolean): boolean {

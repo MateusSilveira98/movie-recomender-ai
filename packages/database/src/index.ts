@@ -39,6 +39,7 @@ export const DATABASE_SCHEMA_MANIFEST: DatabaseSchemaManifest = {
     'recommendation_rounds',
     'recommendation_impressions',
     'recommendation_impression_feedbacks',
+    'model_versions',
   ],
 };
 
