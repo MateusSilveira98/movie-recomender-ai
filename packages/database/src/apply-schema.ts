@@ -19,6 +19,7 @@ async function main() {
     await migrateDatasetImportRatingKeysSchema(client);
     await migrateSessionMovieFeedbackSchema(client);
     await migrateAnonymousSessionSchema(client);
+    await migrateModelVersionsSchema(client);
     logger.info({ component: 'database', event: 'schema_applied' });
   } finally {
     await client.close();
@@ -80,6 +81,23 @@ async function migrateAnonymousSessionSchema(client: Client): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_recommendation_rounds_session_sequence ON recommendation_rounds (session_id, sequence);
     CREATE INDEX IF NOT EXISTS idx_recommendation_impressions_round_position ON recommendation_impressions (round_id, position);
     CREATE INDEX IF NOT EXISTS idx_recommendation_impression_feedbacks_impression_id ON recommendation_impression_feedbacks (impression_id);
+  `);
+}
+
+async function migrateModelVersionsSchema(client: Client): Promise<void> {
+  await client.executeMultiple(`
+    CREATE TABLE IF NOT EXISTS model_versions (
+      version TEXT PRIMARY KEY,
+      manifest_key TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('candidate', 'active', 'failed', 'archived')),
+      source_commit_sha TEXT,
+      workflow_run_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      activated_at TEXT,
+      failure_reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_model_versions_status_created_at ON model_versions (status, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_model_versions_single_active ON model_versions (status) WHERE status = 'active';
   `);
 }
 

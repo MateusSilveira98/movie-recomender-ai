@@ -1,0 +1,64 @@
+name: Model Training
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-training
+  cancel-in-progress: false
+
+jobs:
+  train:
+    name: Train publish validate promote
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@0a44ba7841725637a19e28fa30b79a866c81b0a6 # v4.0.4
+        with:
+          node-version: 22.22.3
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck ML and database
+        run: npx nx run-many -t typecheck --projects=ml,database --outputStyle=static
+
+      - name: Test ML
+        run: npx nx run ml:test --outputStyle=static
+
+      - name: Apply database schema
+        env:
+          DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          DATABASE_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: npx nx run database:migrate --outputStyle=static
+
+      - name: Generate immutable model version
+        id: version
+        run: |
+          VERSION="model-$(date -u +%Y%m%d)-$(echo "${GITHUB_SHA}" | cut -c1-7)-${GITHUB_RUN_ID}"
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Generated MODEL_VERSION=${VERSION}"
+
+      - name: Train publish validate and promote
+        env:
+          DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          DATABASE_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          MODEL_STORAGE_ACCESS_KEY: ${{ secrets.MODEL_STORAGE_ACCESS_KEY }}
+          MODEL_STORAGE_SECRET_KEY: ${{ secrets.MODEL_STORAGE_SECRET_KEY }}
+          MODEL_STORAGE_ENDPOINT: ${{ secrets.MODEL_STORAGE_ENDPOINT }}
+          MODEL_STORAGE_BUCKET: ${{ secrets.MODEL_STORAGE_BUCKET }}
+          MODEL_STORAGE_REGION: ${{ secrets.MODEL_STORAGE_REGION }}
+          MODEL_STORAGE_PREFIX: ${{ secrets.MODEL_STORAGE_PREFIX }}
+          MODEL_STORAGE_FORCE_PATH_STYLE: ${{ secrets.MODEL_STORAGE_FORCE_PATH_STYLE }}
+          MODEL_VERSION: ${{ steps.version.outputs.value }}
+          SOURCE_COMMIT_SHA: ${{ github.sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          TRAINING_MODEL_DIR: ${{ runner.temp }}/movie-recommender-model
+        run: npm exec -- tsx --tsconfig tsconfig.base.json packages/ml/src/train.ts
