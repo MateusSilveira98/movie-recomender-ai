@@ -7,7 +7,7 @@ import { logger } from '@pkg/logger';
 import { startObservability } from '@pkg/observability';
 import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import { materializeDatasetImportChunks } from './workers/dataset/infrastructure/data/dataset-import-chunk-materializer.service.js';
-import { hasValidUtf8Encoding, readCsvHeader } from './workers/dataset/infrastructure/data/csv.reader.js';
+import { inspectUtf8Encoding, readCsvHeader } from './workers/dataset/infrastructure/data/csv.reader.js';
 import { validateDatasetHeaders } from './workers/dataset/infrastructure/validation/dataset-csv.validator.js';
 import { consumeRabbitMqDatasetImportCommands, createRabbitMqNormalizedDatasetImportCommandPublisher } from './workers/dataset/infrastructure/messaging/rabbitmq-dataset-import-command.adapter.js';
 import { createDatasetImportStatusStore } from './workers/dataset/infrastructure/storage/dataset-import-status.store.js';
@@ -38,7 +38,17 @@ async function processCommand(command: DatasetImportCommand): Promise<void> {
     if (downloadedSize !== command.sizeBytes) {
       throw new RetryableDatasetImportError('O tamanho do arquivo baixado não corresponde ao upload aceito.');
     }
-    if (!await hasValidUtf8Encoding(sourcePath)) {
+    const encoding = await inspectUtf8Encoding(sourcePath);
+    logger.info({
+      bytes: encoding.bytes,
+      chunks: encoding.chunks,
+      component: 'dataset-import-reader',
+      event: 'source_encoding_inspected',
+      firstInvalidByteOffset: encoding.firstInvalidByteOffset,
+      sha256: encoding.sha256,
+      uploadId: command.uploadId,
+    });
+    if (!encoding.valid) {
       throw new NonRetryableDatasetImportError('O arquivo não usa UTF-8 válido.');
     }
     if (validateDatasetHeaders(command.type, await readCsvHeader(sourcePath)).length > 0) {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { TextDecoder } from 'node:util';
 import JSON5 from 'json5';
@@ -6,6 +7,14 @@ export const DEFAULT_CSV_RECORD_MAX_LENGTH = 1024 * 1024;
 
 export interface CsvReadOptions {
   maxRecordLength?: number;
+}
+
+export interface Utf8ValidationResult {
+  bytes: number;
+  chunks: number;
+  firstInvalidByteOffset: number | null;
+  sha256: string;
+  valid: boolean;
 }
 
 export interface CsvHeader {
@@ -90,21 +99,56 @@ export async function readCsvHeaders(filePath: string, options?: CsvReadOptions)
   return (await readCsvHeader(filePath, options)).headers;
 }
 
-export async function hasValidUtf8Encoding(filePath: string): Promise<boolean> {
+export async function inspectUtf8Encoding(filePath: string): Promise<Utf8ValidationResult> {
   const decoder = new TextDecoder('utf-8', { fatal: true });
+  const hash = createHash('sha256');
   const input = createReadStream(filePath);
+  let bytes = 0;
+  let chunks = 0;
+  let firstInvalidByteOffset: number | null = null;
 
   try {
     for await (const chunk of input) {
-      decoder.decode(chunk, { stream: true });
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      hash.update(buffer);
+      chunks += 1;
+
+      if (firstInvalidByteOffset === null) {
+        for (let index = 0; index < buffer.length; index += 1) {
+          try {
+            decoder.decode(buffer.subarray(index, index + 1), { stream: true });
+          } catch {
+            firstInvalidByteOffset = bytes + index;
+            break;
+          }
+        }
+      }
+
+      bytes += buffer.byteLength;
     }
 
-    decoder.decode();
-    return true;
-  } catch {
+    if (firstInvalidByteOffset === null) {
+      try {
+        decoder.decode();
+      } catch {
+        firstInvalidByteOffset = bytes;
+      }
+    }
+
+    return {
+      bytes,
+      chunks,
+      firstInvalidByteOffset,
+      sha256: hash.digest('hex'),
+      valid: firstInvalidByteOffset === null,
+    };
+  } finally {
     input.destroy();
-    return false;
   }
+}
+
+export async function hasValidUtf8Encoding(filePath: string): Promise<boolean> {
+  return (await inspectUtf8Encoding(filePath)).valid;
 }
 
 export function parseCsvLine(line: string): string[] {
