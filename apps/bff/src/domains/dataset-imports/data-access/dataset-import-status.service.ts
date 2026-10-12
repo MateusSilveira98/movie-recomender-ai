@@ -1,4 +1,5 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import { logger } from '@pkg/logger';
 import {
   createDatasetImportStatusStore,
   resolveDatasetImportStoragePrefix,
@@ -8,12 +9,38 @@ import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/
 
 export async function findDatasetImportStatus(uploadId: string): Promise<DatasetImportPipelineStatus | null> {
   const store = createStore();
-  return store ? store.get(uploadId) : null;
+  if (!store) {
+    return null;
+  }
+
+  try {
+    return await store.get(uploadId);
+  } catch (error) {
+    logger.error({
+      component: 'dataset-imports',
+      error: error instanceof Error ? error.name : 'UnknownError',
+      event: 'status_lookup_failed',
+    });
+    return null;
+  }
 }
 
 export async function listDatasetImportStatuses(): Promise<DatasetImportPipelineStatus[]> {
   const store = createStore();
-  return store ? store.list() : [];
+  if (!store) {
+    return [];
+  }
+
+  try {
+    return await store.list();
+  } catch (error) {
+    logger.error({
+      component: 'dataset-imports',
+      error: error instanceof Error ? error.name : 'UnknownError',
+      event: 'status_list_failed',
+    });
+    return [];
+  }
 }
 
 function createStore() {

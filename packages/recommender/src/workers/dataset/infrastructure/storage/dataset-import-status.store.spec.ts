@@ -13,6 +13,15 @@ describe('status durável de importação', () => {
     assert.deepEqual(await store.list(), [status('ok')]);
   });
 
+  it('skips listed status objects that no longer exist', async () => {
+    const objects = new Map<string, string>([
+      ['dataset-imports/ok/status.json', JSON.stringify(status('ok'))],
+    ]);
+    const store = createDatasetImportStatusStore(fakeClient(objects, ['dataset-imports/missing/status.json']) as never, 'bucket', 'dataset-imports');
+
+    assert.deepEqual(await store.list(), [status('ok')]);
+  });
+
   it('lists only statuses under the configured prefix', async () => {
     const objects = new Map<string, string>([
       ['dataset-imports/ok/status.json', JSON.stringify(status('ok'))],
@@ -28,11 +37,12 @@ function status(id: string) {
   return { createdAt: '2026-08-12T12:00:00.000Z', errorMessage: null, fileName: 'ratings.csv', id, normalizedChunks: null, sizeBytes: 10, stage: 'accepted' as const, type: 'ratings' as const, updatedAt: '2026-08-12T12:00:00.000Z' };
 }
 
-function fakeClient(objects: Map<string, string>) {
+function fakeClient(objects: Map<string, string>, extraListedKeys: readonly string[] = []) {
   return {
     async send(command: { input: { Key?: string; Prefix?: string } }) {
       if ('Prefix' in command.input) {
-        return { Contents: [...objects.keys()].filter((key) => key.startsWith(command.input.Prefix ?? '')).map((Key) => ({ Key })), IsTruncated: false };
+        const keys = [...objects.keys(), ...extraListedKeys].filter((key) => key.startsWith(command.input.Prefix ?? ''));
+        return { Contents: keys.map((Key) => ({ Key })), IsTruncated: false };
       }
       const value = objects.get(command.input.Key ?? '');
       if (!value) throw { name: 'NoSuchKey' };
