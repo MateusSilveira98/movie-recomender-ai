@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { toMovieRecord } from '../mappers/movie-record.mapper.js';
 import { validateDatasetRecord } from '../validation/dataset-csv.validator.js';
-import { hasValidUtf8Encoding, parseCsvLine, parseLooseArray, parseLooseJson, parsePositiveInteger, readCsv, readCsvHeader, readCsvRecords } from './csv.reader.js';
+import { hasValidUtf8Encoding, inspectUtf8Encoding, parseCsvLine, parseLooseArray, parseLooseJson, parsePositiveInteger, readCsv, readCsvHeader, readCsvRecords } from './csv.reader.js';
 
 describe('leitor do dataset', () => {
   it('deve preservar vírgulas dentro de campos CSV entre aspas', () => {
@@ -149,6 +149,40 @@ describe('leitor do dataset', () => {
       }
 
       assert.deepEqual(rows, [{ id: '', title: '' }]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('deve diagnosticar hash e preservar caractere UTF-8 dividido entre chunks', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'movie-recommender-csv-'));
+    const filePath = join(directory, 'valid.csv');
+
+    try {
+      await writeFile(filePath, Buffer.from('id,title\\n1,ação\\n'));
+      const result = await inspectUtf8Encoding(filePath);
+
+      assert.equal(result.valid, true);
+      assert.equal(result.bytes, 20);
+      assert.equal(result.chunks > 0, true);
+      assert.equal(result.firstInvalidByteOffset, null);
+      assert.equal(result.sha256.length, 64);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('deve informar o offset do primeiro erro UTF-8', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'movie-recommender-csv-'));
+    const filePath = join(directory, 'invalid.csv');
+
+    try {
+      await writeFile(filePath, Buffer.from([0x69, 0x64, 0x2c, 0xc3, 0x28]));
+      const result = await inspectUtf8Encoding(filePath);
+
+      assert.equal(result.valid, false);
+      assert.equal(result.firstInvalidByteOffset, 4);
+      assert.equal(result.bytes, 5);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

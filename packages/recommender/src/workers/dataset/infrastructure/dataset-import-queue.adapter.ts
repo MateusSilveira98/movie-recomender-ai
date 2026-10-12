@@ -11,7 +11,7 @@ import type {
   DatasetFileType,
   DatasetImportResult,
 } from '../domain/dataset-import-queue.types.js';
-import { hasValidUtf8Encoding, readCsvHeader } from './data/csv.reader.js';
+import { inspectUtf8Encoding, readCsvHeader } from './data/csv.reader.js';
 import { loadStoredDatasetLinks } from './data/dataset-links.loader.js';
 import { createDatasetDiagnostic, validateDatasetHeaders } from './validation/dataset-csv.validator.js';
 import {
@@ -109,7 +109,17 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
     filePath: string,
     diagnostics: DatasetImportDiagnosticsCollector,
   ): Promise<boolean> {
-    if (!await hasValidUtf8Encoding(filePath)) {
+    const encoding = await inspectUtf8Encoding(filePath);
+    logger.info({
+      bytes: encoding.bytes,
+      chunks: encoding.chunks,
+      component: 'dataset-import-queue',
+      event: 'file_encoding_inspected',
+      firstInvalidByteOffset: encoding.firstInvalidByteOffset,
+      sha256: encoding.sha256,
+      type,
+    });
+    if (!encoding.valid) {
       await diagnostics.record(createDatasetDiagnostic({ lineEnd: null, lineStart: null }, {
         category: 'structure',
         field: null,
