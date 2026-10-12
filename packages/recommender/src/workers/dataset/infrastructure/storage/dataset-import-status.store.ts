@@ -40,8 +40,16 @@ export function createDatasetImportStatusStore(
       }));
       const keys = page.Contents?.map((object) => object.Key).filter((key): key is string => Boolean(key?.endsWith(STATUS_SUFFIX))) ?? [];
       const pageStatuses = await Promise.all(keys.map(async (key) => {
-        const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-        return response.Body ? parseStatus(await response.Body.transformToString()) : null;
+        try {
+          const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+          return response.Body ? parseStatus(await response.Body.transformToString()) : null;
+        } catch (error) {
+          if (isNotFound(error)) {
+            return null;
+          }
+
+          throw error;
+        }
       }));
       statuses.push(...pageStatuses.filter((status): status is DatasetImportPipelineStatus => status !== null));
       continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
@@ -89,6 +97,14 @@ function isStatus(value: unknown): value is DatasetImportPipelineStatus {
 }
 
 function isNotFound(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'name' in error
-    && (error.name === 'NoSuchKey' || error.name === 'NotFound');
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  const candidate = error as { Code?: unknown; name?: unknown; $metadata?: { httpStatusCode?: unknown } };
+  return candidate.name === 'NoSuchKey'
+    || candidate.name === 'NotFound'
+    || candidate.Code === 'NoSuchKey'
+    || candidate.Code === 'NotFound'
+    || candidate.$metadata?.httpStatusCode === 404;
 }
