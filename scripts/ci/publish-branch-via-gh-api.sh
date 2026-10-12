@@ -64,6 +64,7 @@ branch_sha="$(
 
 if [ -n "$branch_sha" ]; then
   expected_head_oid="$branch_sha"
+  diff_base_sha="$branch_sha"
   echo "Branch remoto encontrado: ${branch} (${branch_sha})"
 else
   echo "Criando branch remoto via GraphQL createRef..."
@@ -82,10 +83,16 @@ else
       }
     }')" >/dev/null
   expected_head_oid="$base_sha"
+  diff_base_sha="$base_sha"
   echo "Branch remoto criado: ${branch} (base ${base} @ ${base_sha})"
 fi
 
-git diff --name-status "${base_sha}" HEAD > "$diff_list"
+if git diff --quiet --no-renames "$diff_base_sha"; then
+  echo "Branch ${branch} já está sincronizado com o working tree (${expected_head_oid})."
+  exit 0
+fi
+
+git diff --no-renames --name-status "$diff_base_sha" > "$diff_list"
 
 additions='[]'
 deletions='[]'
