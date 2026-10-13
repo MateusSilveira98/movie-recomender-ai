@@ -5,7 +5,7 @@ import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createClient, type Client } from '@libsql/client';
-import type { DatasetImportCommand, QstashConfiguration, RecommendationRanker } from '@pkg/recommender';
+import type { DatasetImportCommand, DatasetImportQueue, QstashConfiguration, RecommendationRanker } from '@pkg/recommender';
 import { createApp } from '../app/app.js';
 
 export const WEB_ORIGIN = 'http://localhost:5173';
@@ -31,6 +31,8 @@ export interface BffTestContext {
 interface BffTestContextOptions {
   datasetImportAdminToken?: string;
   datasetImportCommandProcessor?: (command: DatasetImportCommand) => Promise<void>;
+  datasetImportQueue?: DatasetImportQueue;
+  processDatasetQueue?: boolean;
   qstash?: QstashConfiguration | null;
   recommendationRanker?: RecommendationRanker;
 }

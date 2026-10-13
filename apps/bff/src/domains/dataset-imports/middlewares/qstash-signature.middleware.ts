@@ -1,7 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { qstashDatasetImportCommandUrl, verifyQstashSignature, type QstashConfiguration } from '@pkg/recommender';
+import { verifyQstashSignature, type QstashConfiguration } from '@pkg/recommender';
 
-export function createQstashSignatureMiddleware(configuration: QstashConfiguration | null): RequestHandler {
+export function createQstashSignatureMiddleware(configuration: QstashConfiguration | null, resolveDestination: (configuration: QstashConfiguration) => string): RequestHandler {
   return async (request: Request, response: Response, next: NextFunction) => {
     if (!configuration) {
       response.status(503).json({ error: 'QStash nao configurado.' });
@@ -10,7 +10,7 @@ export function createQstashSignatureMiddleware(configuration: QstashConfigurati
 
     const signature = request.get('upstash-signature') ?? '';
     const body = readRawRequestBody(request);
-    const destination = qstashDatasetImportCommandUrl(configuration);
+    const destination = resolveDestination(configuration);
 
     if (!(await verifyQstashSignature(configuration, {
       body,

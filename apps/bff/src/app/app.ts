@@ -4,7 +4,7 @@ import type { Client } from '@libsql/client';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
 import { logger } from '@pkg/logger';
 import { getTrainingPipelineStatus, type ModelRuntimeStatus } from '@pkg/ml';
-import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, getQstashConfiguration, type DatasetImportCommand, type QstashConfiguration, type RecommendationRanker } from '@pkg/recommender';
+import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, getQstashConfiguration, type DatasetImportCommand, type DatasetImportQueue, type QstashConfiguration, type RecommendationRanker } from '@pkg/recommender';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
 import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import { createQstashDatasetImportRoutes } from '../domains/dataset-imports/routes/qstash-dataset-imports.routes.js';
@@ -19,6 +19,7 @@ interface AppDependencies {
   databaseClient?: Client;
   datasetImportAdminToken?: string;
   datasetImportCommandProcessor?: (command: DatasetImportCommand) => Promise<void>;
+  datasetImportQueue?: DatasetImportQueue;
   mlStatus?: ModelRuntimeStatus;
   processDatasetQueue?: boolean;
   qstash?: QstashConfiguration | null;
@@ -29,13 +30,14 @@ export function createApp({
   databaseClient = createDatabaseClient(),
   datasetImportAdminToken = resolveSecretEnvironmentValue(process.env, 'DATASET_IMPORT_ADMIN_TOKEN'),
   datasetImportCommandProcessor,
+  datasetImportQueue: providedDatasetImportQueue,
   mlStatus = getTrainingPipelineStatus(),
   processDatasetQueue = true,
   qstash = getQstashConfiguration(),
   recommendationRanker = createRecommendationRanker(),
 }: AppDependencies = {}): express.Express {
   const app = express();
-  const datasetImportQueue = createDatasetImportQueue(
+  const datasetImportQueue = providedDatasetImportQueue ?? createDatasetImportQueue(
     createSqlDatasetImportGateway(databaseClient),
     undefined,
     { autoProcess: processDatasetQueue && !qstash },
@@ -68,7 +70,7 @@ export function createApp({
       },
     }),
   );
-  app.use(createQstashDatasetImportRoutes(qstash, qstashCommandProcessor));
+  app.use(createQstashDatasetImportRoutes(qstash, datasetImportQueue, qstashCommandProcessor));
   app.use(express.json());
   app.use(createRequestLogger());
 

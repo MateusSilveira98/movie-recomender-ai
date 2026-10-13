@@ -1,18 +1,29 @@
+import type { DatasetImportQueue } from '@pkg/recommender';
 import express from 'express';
-import { parseDatasetImportCommand, type DatasetImportCommand, type QstashConfiguration } from '@pkg/recommender';
+import { parseDatasetImportCommand, qstashDatasetImportCommandUrl, qstashDatasetImportReconciliationUrl, type DatasetImportCommand, type QstashConfiguration } from '@pkg/recommender';
 import { createAsyncHandler } from '../../../middlewares/request-logger.middleware.js';
 import { createQstashSignatureMiddleware } from '../middlewares/qstash-signature.middleware.js';
 
 export function createQstashDatasetImportRoutes(
   configuration: QstashConfiguration | null,
+  queue: DatasetImportQueue,
   processCommand: (command: DatasetImportCommand) => Promise<void> = unsupportedCommandProcessor,
 ): express.Router {
   const router = express.Router();
 
   router.post(
+    '/internal/qstash/dataset-imports/reconcile',
+    express.raw({ limit: '1kb', type: () => true }),
+    createQstashSignatureMiddleware(configuration, qstashDatasetImportReconciliationUrl),
+    createAsyncHandler(async (_request, response) => {
+      await queue.processPending();
+      response.status(204).end();
+    }),
+  );
+  router.post(
     '/internal/qstash/dataset-imports/commands',
     express.raw({ limit: '1mb', type: () => true }),
-    createQstashSignatureMiddleware(configuration),
+    createQstashSignatureMiddleware(configuration, qstashDatasetImportCommandUrl),
     createAsyncHandler(async (request, response) => {
       const command = parseDatasetImportCommand(request.body);
       if (!command) {

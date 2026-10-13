@@ -58,6 +58,10 @@ export function qstashDatasetImportCommandUrl(configuration: QstashConfiguration
   return `${configuration.callbackBaseUrl}/internal/qstash/dataset-imports/commands`;
 }
 
+export function qstashDatasetImportReconciliationUrl(configuration: QstashConfiguration): string {
+  return `${configuration.callbackBaseUrl}/internal/qstash/dataset-imports/reconcile`;
+}
+
 function normalizeHttpsUrl(value: string, name: string): string {
   let endpoint: URL;
 

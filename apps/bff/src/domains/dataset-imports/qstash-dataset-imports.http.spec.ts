@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createQstashSignature } from '@pkg/recommender';
+import { createQstashSignature, type DatasetImportQueue } from '@pkg/recommender';
 import { createBffTestContext, request } from '../../test-support/bff-test-context.js';
 
 const qstash = {
@@ -18,7 +18,8 @@ const command = {
   type: 'ratings',
   uploadId: 'upload-1',
 };
-const destination = `${qstash.callbackBaseUrl}/internal/qstash/dataset-imports/commands`;
+const commandDestination = `${qstash.callbackBaseUrl}/internal/qstash/dataset-imports/commands`;
+const reconciliationDestination = `${qstash.callbackBaseUrl}/internal/qstash/dataset-imports/reconcile`;
 
 describe('QStash dataset import command HTTP API', () => {
   describe('signature verification', () => {
@@ -55,13 +56,48 @@ describe('QStash dataset import command HTTP API', () => {
           body,
           headers: {
             'Content-Type': 'application/json',
-            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body, destination),
+            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body, commandDestination),
           },
           method: 'POST',
         });
 
         assert.equal(response.status, 204);
         assert.deepEqual(processed, [command]);
+      } finally {
+        await context.dispose();
+      }
+    });
+  });
+
+  describe('reconciliation', () => {
+    it('processes a signed reconciliation request', async () => {
+      let processPendingCalls = 0;
+      const context = await createBffTestContext({
+        qstash,
+        processDatasetQueue: false,
+        datasetImportQueue: {
+          enqueue: async () => { throw new Error('Unused'); },
+          findUpload: async () => null,
+          listDiagnostics: async () => null,
+          listJobs: async () => [],
+          listUploads: async () => [],
+          processPending: async () => { processPendingCalls += 1; },
+        } satisfies DatasetImportQueue,
+      });
+
+      try {
+        const body = '{}';
+        const response = await request(context, '/internal/qstash/dataset-imports/reconcile', {
+          body,
+          headers: {
+            'Content-Type': 'application/json',
+            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body, reconciliationDestination),
+          },
+          method: 'POST',
+        });
+
+        assert.equal(response.status, 204);
+        assert.equal(processPendingCalls, 1);
       } finally {
         await context.dispose();
       }
@@ -85,7 +121,7 @@ describe('QStash dataset import command HTTP API', () => {
           body,
           headers: {
             'Content-Type': 'application/json',
-            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body, destination),
+            'Upstash-Signature': createQstashSignature(qstash.currentSigningKey, body, commandDestination),
           },
           method: 'POST',
         });
