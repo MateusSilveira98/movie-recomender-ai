@@ -88,7 +88,7 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
     requeueInterruptedJobs: () => requeueInterruptedDatasetImportJobs(client),
     reconcileStagedImports: () => reconcileWaitingImports(client),
     requeueWaitingJobs: (dependency) => requeueWaitingDatasetJobs(client, dependency),
-    reportJobFailure: (job, error) => logger.error({ component: 'dataset-import-queue', error: getErrorName(error), event: 'job_failed', jobId: job.id, type: job.type }),
+    reportJobFailure: (job, error) => logger.error({ component: 'dataset-import-queue', error: getErrorName(error), errorMessage: getErrorMessage(error), errorStack: getErrorStack(error), event: 'job_failed', jobId: job.id, type: job.type }),
     reportProcessorFailure: (error) => logger.error({ component: 'dataset-import-queue', error: getErrorMessage(error), event: 'processor_failed' }),
     validateFileStructure,
     waitForDependencies: (job, dependencies) => waitForDatasetDependencies(client, job, dependencies),
@@ -769,6 +769,10 @@ function getErrorName(error: unknown): string {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Erro desconhecido';
+}
+
+function getErrorStack(error: unknown): string {
+  return error instanceof Error ? (error.stack ?? '').slice(0, 2000) : '';
 }
 
 async function recordDiagnostics(
