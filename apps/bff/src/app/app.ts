@@ -4,11 +4,12 @@ import type { Client } from '@libsql/client';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
 import { logger } from '@pkg/logger';
 import { getTrainingPipelineStatus, type ModelRuntimeStatus } from '@pkg/ml';
-import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, getQstashConfiguration, type DatasetImportCommand, type DatasetImportQueue, type QstashConfiguration, type RecommendationRanker } from '@pkg/recommender';
+import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, getQstashConfiguration, type DatasetImportCommand, type QstashConfiguration, type RecommendationRanker } from '@pkg/recommender';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
 import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import { createQstashDatasetImportRoutes } from '../domains/dataset-imports/routes/qstash-dataset-imports.routes.js';
-import { createQstashDatasetImportCommandProcessor } from '../domains/dataset-imports/data-access/qstash-dataset-import-command-processor.service.js';
+import type { DatasetImportQueue, StoredDatasetImportJob } from '@pkg/recommender';
+import { createQstashDatasetImportCommandProcessor, createQstashDatasetImportStorage } from '../domains/dataset-imports/data-access/qstash-dataset-import-command-processor.service.js';
 import { createSqlMovieCatalogRepository } from '../domains/movies/repositories/movies.repository.js';
 import { createSqlSessionRepository } from '../domains/sessions/repositories/sessions.repository.js';
 import { createAsyncHandler, createRequestLogger, requestErrorHandler } from '../middlewares/request-logger.middleware.js';
@@ -20,10 +21,21 @@ interface AppDependencies {
   datasetImportAdminToken?: string;
   datasetImportCommandProcessor?: (command: DatasetImportCommand) => Promise<void>;
   datasetImportQueue?: DatasetImportQueue;
+  datasetImportRehydrateFile?: (job: StoredDatasetImportJob) => Promise<string>;
   mlStatus?: ModelRuntimeStatus;
   processDatasetQueue?: boolean;
   qstash?: QstashConfiguration | null;
   recommendationRanker?: RecommendationRanker;
+}
+
+function createRehydrateFile(storageFactory: () => { download(command: DatasetImportCommand, destination: string): Promise<void> }) {
+  return async (job: StoredDatasetImportJob): Promise<string> => {
+    if (!job.objectKey) throw new Error('O objectKey do upload não está persistido.');
+    const path = `/tmp/movie-recommender-qstash-imports/${job.uploadId}/source.csv`;
+    await (await import('node:fs/promises')).mkdir(path.slice(0, path.lastIndexOf('/')), { recursive: true });
+    await storageFactory().download({ fileName: job.fileName, objectKey: job.objectKey, sizeBytes: job.sizeBytes, type: job.type, uploadId: job.uploadId }, path);
+    return path;
+  };
 }
 
 export function createApp({
@@ -31,6 +43,7 @@ export function createApp({
   datasetImportAdminToken = resolveSecretEnvironmentValue(process.env, 'DATASET_IMPORT_ADMIN_TOKEN'),
   datasetImportCommandProcessor,
   datasetImportQueue: providedDatasetImportQueue,
+  datasetImportRehydrateFile,
   mlStatus = getTrainingPipelineStatus(),
   processDatasetQueue = true,
   qstash = getQstashConfiguration(),
@@ -40,7 +53,7 @@ export function createApp({
   const datasetImportQueue = providedDatasetImportQueue ?? createDatasetImportQueue(
     createSqlDatasetImportGateway(databaseClient),
     undefined,
-    { autoProcess: processDatasetQueue && !qstash },
+    { autoProcess: processDatasetQueue && !qstash, rehydrateFile: datasetImportRehydrateFile ?? (qstash ? createRehydrateFile(() => createQstashDatasetImportStorage()) : undefined) },
   );
   const qstashCommandProcessor = datasetImportCommandProcessor
     ?? (qstash ? createQstashDatasetImportCommandProcessor(datasetImportQueue) : undefined);

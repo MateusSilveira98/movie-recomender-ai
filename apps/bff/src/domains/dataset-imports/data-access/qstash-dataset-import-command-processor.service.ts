@@ -7,10 +7,13 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { DatasetImportCommand, DatasetImportQueue } from '@pkg/recommender';
 import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
-interface DatasetImportCommandStorage {
+export interface DatasetImportCommandStorage {
   download(command: DatasetImportCommand, destination: string): Promise<void>;
 }
 
+export function createQstashDatasetImportStorage(): DatasetImportCommandStorage {
+  return createStorage();
+}
 export function createQstashDatasetImportCommandProcessor(
   queue: DatasetImportQueue,
   storage?: DatasetImportCommandStorage,
@@ -28,6 +31,7 @@ export function createQstashDatasetImportCommandProcessor(
 
     await queue.enqueue({
       fileName: command.fileName,
+      objectKey: command.objectKey,
       sizeBytes: command.sizeBytes,
       storagePath,
       type: command.type,

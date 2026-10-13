@@ -94,6 +94,7 @@ export interface DatasetImportJob {
 
 export interface DatasetUploadInput {
   fileName: string;
+  objectKey?: string;
   sizeBytes: number;
   storagePath: string;
   type: DatasetFileType;

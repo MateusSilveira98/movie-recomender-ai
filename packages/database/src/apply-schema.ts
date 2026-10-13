@@ -16,6 +16,7 @@ async function main() {
   try {
     await client.executeMultiple(schema);
     await migrateDatasetImportChunksSchema(client);
+    await migrateDatasetImportUploadsSchema(client);
     await migrateDatasetImportRatingKeysSchema(client);
     await migrateSessionMovieFeedbackSchema(client);
     await migrateAnonymousSessionSchema(client);
@@ -26,6 +27,12 @@ async function main() {
   }
 }
 
+async function migrateDatasetImportUploadsSchema(client: Client): Promise<void> {
+  const columns = await client.execute({ sql: 'PRAGMA table_info(dataset_uploads)', args: [] });
+  if (!columns.rows.some((column) => String(column.name) === 'storage_object_key')) {
+    await client.execute({ sql: 'ALTER TABLE dataset_uploads ADD COLUMN storage_object_key TEXT', args: [] });
+  }
+}
 async function migrateDatasetImportRatingKeysSchema(client: Client): Promise<void> {
   const columns = await client.execute({ sql: 'PRAGMA table_info(dataset_import_rating_keys)', args: [] });
   const existingColumns = new Set(columns.rows.map((column) => String(column.name)));

@@ -11,22 +11,21 @@ import type {
   DatasetUploadInput,
   DatasetUploadStatus,
 } from '../../domain/dataset-import-queue.types.js';
+import type { StoredDatasetImportJob } from '../../application/ports/dataset-import-gateway.port.js';
+
+
 import { resolveDatasetUploadStatus } from '../../domain/dataset-upload-status.service.js';
 
 const INTERRUPTED_JOB_TIMEOUT_MINUTES = 30;
-
-export interface StoredDatasetImportJob extends DatasetImportJob {
-  storagePath: string | null;
-}
 
 export async function createDatasetUploadWithJob(client: Client, upload: DatasetUploadInput, uploadId: string = crypto.randomUUID()): Promise<DatasetUpload> {
   const jobId = crypto.randomUUID();
 
   await client.batch([
     {
-      sql: `INSERT OR IGNORE INTO dataset_uploads (id, file_name, file_type, storage_path, size_bytes, status)
-        VALUES (?, ?, ?, ?, ?, 'queued')`,
-      args: [uploadId, upload.fileName, upload.type, upload.storagePath, upload.sizeBytes],
+      sql: `INSERT OR IGNORE INTO dataset_uploads (id, file_name, file_type, storage_path, storage_object_key, size_bytes, status)
+        VALUES (?, ?, ?, ?, ?, ?, 'queued')`,
+      args: [uploadId, upload.fileName, upload.type, upload.storagePath, upload.objectKey ?? null, upload.sizeBytes],
     },
     {
       sql: `INSERT OR IGNORE INTO dataset_import_jobs (id, upload_id, file_type, status)
@@ -315,7 +314,7 @@ export async function countRows(client: Client, tableName: 'dataset_movie_links'
 export async function findStoredJob(client: Client, jobId: string): Promise<StoredDatasetImportJob | null> {
   const result = await client.execute({
     sql: `SELECT jobs.id, jobs.upload_id, jobs.file_type, jobs.status, jobs.attempt_count, jobs.error_message,
-      jobs.created_at, jobs.completed_at, uploads.storage_path
+      jobs.created_at, jobs.completed_at, uploads.file_name, uploads.size_bytes, uploads.storage_path, uploads.storage_object_key
       FROM dataset_import_jobs jobs JOIN dataset_uploads uploads ON uploads.id = jobs.upload_id WHERE jobs.id = ?`,
     args: [jobId],
   });
@@ -323,7 +322,7 @@ export async function findStoredJob(client: Client, jobId: string): Promise<Stor
   const row = result.rows[0];
 
   return row
-    ? { ...toDatasetImportJob(row), storagePath: row.storage_path === null ? null : String(row.storage_path) }
+    ? { ...toDatasetImportJob(row), fileName: String(row.file_name), objectKey: row.storage_object_key === null ? null : String(row.storage_object_key), sizeBytes: Number(row.size_bytes), storagePath: row.storage_path === null ? null : String(row.storage_path) }
     : null;
 }
 
