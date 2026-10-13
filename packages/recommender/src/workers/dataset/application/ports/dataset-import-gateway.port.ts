@@ -44,6 +44,7 @@ export interface DatasetImportGateway {
   requeueWaitingJobs(dependency: DatasetDependency['type']): Promise<void>;
   reportJobFailure(job: StoredDatasetImportJob, error: unknown, stage: string): void;
   reportJobStage?(job: StoredDatasetImportJob, stage: string, status: string): void;
+  reportReconciliation?(event: string, details?: Record<string, unknown>): void;
   reportProcessorFailure(error: unknown): void;
   validateFileStructure(
     type: DatasetFileType,

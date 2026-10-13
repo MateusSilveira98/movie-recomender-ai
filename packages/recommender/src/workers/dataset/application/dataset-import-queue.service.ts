@@ -31,7 +31,6 @@ export function createDatasetImportQueue(
   { autoProcess = true, writeExecutor = immediateDatasetImportWriteExecutor }: DatasetImportQueueOptions = {},
 ): DatasetImportQueue {
   let isProcessing = false;
-  let recoveredJobs = false;
   let processRequested = false;
 
   return {
@@ -67,15 +66,21 @@ export function createDatasetImportQueue(
   }
 
   async function processPending(): Promise<void> {
-    if (!recoveredJobs) {
+    gateway.reportReconciliation?.('reconciliation_started');
+    try {
       await gateway.requeueInterruptedJobs();
-      recoveredJobs = true;
-    }
-    await gateway.reconcileStagedImports();
-    let job = await gateway.claimNextJob();
-    while (job) {
-      await processJob(job);
-      job = await gateway.claimNextJob();
+      gateway.reportReconciliation?.('reconciliation_requeued_jobs');
+      await gateway.reconcileStagedImports();
+      gateway.reportReconciliation?.('reconciliation_reconciled_staged_imports');
+      let job = await gateway.claimNextJob();
+      while (job) {
+        await processJob(job);
+        job = await gateway.claimNextJob();
+      }
+      gateway.reportReconciliation?.('reconciliation_completed');
+    } catch (error) {
+      gateway.reportReconciliation?.('reconciliation_failed', { error: error instanceof Error ? error.message : 'Erro desconhecido' });
+      throw error;
     }
   }
 
