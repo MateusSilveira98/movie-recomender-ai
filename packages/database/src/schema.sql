@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS dataset_uploads (
   file_name TEXT NOT NULL,
   file_type TEXT NOT NULL CHECK (file_type IN ('movies', 'links', 'credits', 'ratings')),
   storage_path TEXT,
+  storage_object_key TEXT,
   size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
   status TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'waiting_dependencies', 'success', 'partial_error', 'error')),
   processed_rows INTEGER NOT NULL DEFAULT 0 CHECK (processed_rows >= 0),

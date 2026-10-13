@@ -13,6 +13,9 @@ import type {
 import type { DatasetImportChunk } from '../../domain/dataset-import-chunk.types.js';
 
 export interface StoredDatasetImportJob extends DatasetImportJob {
+  fileName: string;
+  objectKey: string | null;
+  sizeBytes: number;
   storagePath: string | null;
 }
 

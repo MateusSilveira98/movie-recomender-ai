@@ -33,6 +33,7 @@ export {
   type DatasetUpload,
 } from './workers/dataset/domain/dataset-import-queue.types.js';
 export type { DatasetImportCommand } from './workers/dataset/domain/dataset-import-command.types.js';
+export type { StoredDatasetImportJob } from './workers/dataset/application/ports/dataset-import-gateway.port.js';
 export type { DatasetImportPipelineStage, DatasetImportPipelineStatus } from './workers/dataset/domain/dataset-import-status.types.js';
 export { createRecommendationRanker, type RecommendationRanker, type RecommendationRankerOptions } from './recommendations/application/services/recommendation-ranker.service.js';
 export { HYBRID_V1_RANKING_POLICY } from './recommendations/domain/consts/hybrid-v1-ranking-policy.const.js';

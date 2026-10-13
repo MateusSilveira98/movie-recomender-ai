@@ -22,13 +22,14 @@ export interface DatasetImportQueue {
 
 export interface DatasetImportQueueOptions {
   autoProcess?: boolean;
+  rehydrateFile?: (job: StoredDatasetImportJob) => Promise<string>;
   writeExecutor?: DatasetImportWriteExecutor;
 }
 
 export function createDatasetImportQueue(
   gateway: DatasetImportGateway,
   chunkDispatcher?: DatasetImportChunkDispatcher,
-  { autoProcess = true, writeExecutor = immediateDatasetImportWriteExecutor }: DatasetImportQueueOptions = {},
+  { autoProcess = true, rehydrateFile, writeExecutor = immediateDatasetImportWriteExecutor }: DatasetImportQueueOptions = {},
 ): DatasetImportQueue {
   let isProcessing = false;
   let processRequested = false;
@@ -104,6 +105,13 @@ export function createDatasetImportQueue(
       }
       stage = 'validate_storage_path';
       gateway.reportJobStage?.(job, stage, 'processing');
+      if (job.storagePath && rehydrateFile) {
+        try {
+          await import('node:fs/promises').then(({ access }) => access(job.storagePath!));
+        } catch {
+          job.storagePath = await rehydrateFile(job);
+        }
+      }
       if (!job.storagePath) {
         await diagnostics.record(missingFileDiagnostic());
         await failWithDiagnostics(job, diagnostics, 'Arquivo temporario indisponivel.');
