@@ -10,6 +10,10 @@ export const LOG_EXPORT_FIELDS = [
   'status',
   'durationMs',
   'error',
+  'errorCause',
+  'errorMessage',
+  'errorStack',
+  'stage',
 ] as const;
 
 export type ExportableLogField = typeof LOG_EXPORT_FIELDS[number];

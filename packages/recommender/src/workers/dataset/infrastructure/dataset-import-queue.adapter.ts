@@ -88,7 +88,7 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
     requeueInterruptedJobs: () => requeueInterruptedDatasetImportJobs(client),
     reconcileStagedImports: () => reconcileWaitingImports(client),
     requeueWaitingJobs: (dependency) => requeueWaitingDatasetJobs(client, dependency),
-    reportJobFailure: (job, error) => logger.error({ component: 'dataset-import-queue', error: getErrorName(error), errorMessage: getErrorMessage(error), errorStack: getErrorStack(error), event: 'job_failed', jobId: job.id, type: job.type }),
+    reportJobFailure: (job, error, stage) => logger.error({ component: 'dataset-import-queue', error: getErrorName(error), errorCause: getErrorCause(error), errorMessage: getErrorMessage(error), errorStack: getErrorStack(error), event: 'job_failed', jobId: job.id, stage, type: job.type }),
     reportProcessorFailure: (error) => logger.error({ component: 'dataset-import-queue', error: getErrorMessage(error), event: 'processor_failed' }),
     validateFileStructure,
     waitForDependencies: (job, dependencies) => waitForDatasetDependencies(client, job, dependencies),
@@ -765,6 +765,10 @@ async function removeTemporaryFile(filePath: string): Promise<void> {
 
 function getErrorName(error: unknown): string {
   return error instanceof Error ? error.name : 'UnknownError';
+}
+
+function getErrorCause(error: unknown): string {
+  return error instanceof Error && error.cause instanceof Error ? `${error.cause.name}: ${error.cause.message}`.slice(0, 500) : '';
 }
 
 function getErrorMessage(error: unknown): string {
