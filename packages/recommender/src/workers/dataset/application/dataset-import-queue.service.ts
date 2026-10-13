@@ -32,6 +32,7 @@ export function createDatasetImportQueue(
 ): DatasetImportQueue {
   let isProcessing = false;
   let recoveredJobs = false;
+  let processRequested = false;
 
   return {
     async enqueue(upload) {
@@ -49,10 +50,15 @@ export function createDatasetImportQueue(
   };
 
   async function processPendingSafely(): Promise<void> {
+    processRequested = true;
     if (isProcessing) return;
+
     isProcessing = true;
     try {
-      await writeExecutor.execute(processPending);
+      do {
+        processRequested = false;
+        await writeExecutor.execute(processPending);
+      } while (processRequested);
     } catch (error) {
       gateway.reportProcessorFailure(error);
     } finally {

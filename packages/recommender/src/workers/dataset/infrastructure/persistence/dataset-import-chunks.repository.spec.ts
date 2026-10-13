@@ -147,7 +147,7 @@ describe('chunks de importação do dataset', () => {
         contentHash: 'hash-0', lineEnd: 2, lineStart: 2, payloadPath: '/tmp/chunk-0.jsonl', recordCount: 1, sequence: 0,
       });
       await context.client.batch([
-        { sql: "UPDATE dataset_import_jobs SET status = 'processing' WHERE id = ?", args: [upload.jobId] },
+        { sql: "UPDATE dataset_import_jobs SET status = 'processing', started_at = datetime('now', '-31 minutes') WHERE id = ?", args: [upload.jobId] },
         { sql: "UPDATE dataset_import_chunks SET status = 'processing' WHERE id = ?", args: [chunk.id] },
       ], 'write');
 
