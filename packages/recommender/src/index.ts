@@ -12,7 +12,7 @@ export { createSqlDatasetImportGateway } from './workers/dataset/infrastructure/
 export { createDatasetImportCommandPublisher } from './workers/dataset/application/services/create-dataset-import-command-publisher.service.js';
 export type { DatasetImportCommandPublisher } from './workers/dataset/application/ports/dataset-import-command-publisher.port.js';
 export { createRabbitMqDatasetImportCommandPublisher } from './workers/dataset/infrastructure/messaging/rabbitmq-dataset-import-command.adapter.js';
-export { getQstashConfiguration, qstashDatasetImportCommandUrl, type QstashConfiguration } from './workers/dataset/infrastructure/config/qstash-configuration.service.js';
+export { getQstashConfiguration, qstashDatasetImportCommandUrl, qstashDatasetImportReconciliationUrl, type QstashConfiguration } from './workers/dataset/infrastructure/config/qstash-configuration.service.js';
 export { createQstashSignature, verifyQstashSignature } from './workers/dataset/infrastructure/messaging/qstash-signature.service.js';
 export { parseDatasetImportCommand, parseNormalizedDatasetImportCommand } from './workers/dataset/domain/dataset-import-command.parser.js';
 export { createDatasetImportStatusStore } from './workers/dataset/infrastructure/storage/dataset-import-status.store.js';
