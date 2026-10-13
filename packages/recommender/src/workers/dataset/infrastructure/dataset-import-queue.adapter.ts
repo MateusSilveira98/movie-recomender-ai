@@ -88,7 +88,9 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
     requeueInterruptedJobs: () => requeueInterruptedDatasetImportJobs(client),
     reconcileStagedImports: () => reconcileWaitingImports(client),
     requeueWaitingJobs: (dependency) => requeueWaitingDatasetJobs(client, dependency),
-    reportJobFailure: (job, error, stage) => logger.error({ component: 'dataset-import-queue', error: getErrorName(error), errorCause: getErrorCause(error), errorMessage: getErrorMessage(error), errorStack: getErrorStack(error), event: 'job_failed', jobId: job.id, stage, type: job.type }),
+    reportJobStage: (job, stage, status) => logger.info({ component: 'dataset-import-queue', event: 'job_stage', jobId: job.id, stage, status, type: job.type, uploadId: job.uploadId }),
+    reportJobFailure: (job, error, stage) => logger.error({ component: 'dataset-import-queue', error: getErrorName(error), errorCause: getErrorCause(error), errorMessage: getErrorMessage(error), errorStack: getErrorStack(error), event: 'job_failed', jobId: job.id, stage, type: job.type, uploadId: job.uploadId }),
+
     reportProcessorFailure: (error) => logger.error({ component: 'dataset-import-queue', error: getErrorMessage(error), event: 'processor_failed' }),
     validateFileStructure,
     waitForDependencies: (job, dependencies) => waitForDatasetDependencies(client, job, dependencies),

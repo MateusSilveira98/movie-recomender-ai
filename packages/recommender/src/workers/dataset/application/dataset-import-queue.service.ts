@@ -82,12 +82,14 @@ export function createDatasetImportQueue(
   async function processJob(job: StoredDatasetImportJob): Promise<void> {
     const diagnostics = gateway.createDiagnostics(job.uploadId);
     let stage = 'start';
+    gateway.reportJobStage?.(job, stage, 'processing');
     try {
       if (job.attemptCount === 1) {
         await gateway.clearDiagnostics(job.uploadId);
         await gateway.clearRatingKeys(job.uploadId);
       }
       stage = 'list_chunks';
+      gateway.reportJobStage?.(job, stage, 'processing');
       const existingChunks = await gateway.listChunks(job.id);
       if (chunkDispatcher && existingChunks.length > 0) {
         if (!existingChunks.every((chunk) => chunk.status === 'completed')) {
@@ -96,18 +98,21 @@ export function createDatasetImportQueue(
         return;
       }
       stage = 'validate_storage_path';
+      gateway.reportJobStage?.(job, stage, 'processing');
       if (!job.storagePath) {
         await diagnostics.record(missingFileDiagnostic());
         await failWithDiagnostics(job, diagnostics, 'Arquivo temporario indisponivel.');
         return;
       }
       stage = 'validate_file_structure';
+      gateway.reportJobStage?.(job, stage, 'processing');
       if (!await gateway.validateFileStructure(job.type, job.storagePath, diagnostics)) {
         await failWithDiagnostics(job, diagnostics, 'Estrutura do CSV invalida.');
         await gateway.deleteTemporaryFile(job.storagePath);
         return;
       }
       stage = 'create_checkpoints';
+      gateway.reportJobStage?.(job, stage, 'processing');
       if (job.type === 'links' || job.type === 'ratings' || chunkDispatcher) {
         await gateway.createCheckpoints(job);
         const chunks = await gateway.listChunks(job.id);
@@ -120,6 +125,7 @@ export function createDatasetImportQueue(
         }
       }
       stage = 'resolve_dependencies';
+      gateway.reportJobStage?.(job, stage, 'processing');
       if (!chunkDispatcher) {
         const dependencies = await getMissingDependencies(job.type);
         if (dependencies.length > 0) {
@@ -128,6 +134,7 @@ export function createDatasetImportQueue(
         }
       }
       stage = 'import_file';
+      gateway.reportJobStage?.(job, stage, 'processing');
       const result = await gateway.importFile(job, diagnostics);
       await diagnostics.flush();
       await gateway.completeJob(job, result);
