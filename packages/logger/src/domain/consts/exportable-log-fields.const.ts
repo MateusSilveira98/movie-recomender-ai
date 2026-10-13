@@ -14,6 +14,8 @@ export const LOG_EXPORT_FIELDS = [
   'errorMessage',
   'errorStack',
   'stage',
+  'type',
+  'uploadId',
 ] as const;
 
 export type ExportableLogField = typeof LOG_EXPORT_FIELDS[number];
