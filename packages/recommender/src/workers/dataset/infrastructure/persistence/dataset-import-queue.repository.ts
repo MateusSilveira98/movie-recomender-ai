@@ -13,6 +13,8 @@ import type {
 } from '../../domain/dataset-import-queue.types.js';
 import { resolveDatasetUploadStatus } from '../../domain/dataset-upload-status.service.js';
 
+const INTERRUPTED_JOB_TIMEOUT_MINUTES = 30;
+
 export interface StoredDatasetImportJob extends DatasetImportJob {
   storagePath: string | null;
 }
@@ -243,8 +245,9 @@ export async function requeueInterruptedDatasetImportJobs(client: Client): Promi
     {
       sql: `UPDATE dataset_import_jobs
         SET status = 'queued', error_message = NULL
-        WHERE status = 'processing'`,
-      args: [],
+        WHERE status = 'processing'
+          AND started_at < datetime('now', ? || ' minutes')`,
+      args: [`-${INTERRUPTED_JOB_TIMEOUT_MINUTES}`],
     },
     {
       sql: `UPDATE dataset_import_chunks SET status = 'queued', error_message = NULL, completed_at = NULL

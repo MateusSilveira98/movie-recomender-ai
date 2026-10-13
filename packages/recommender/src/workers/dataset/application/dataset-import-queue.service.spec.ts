@@ -13,6 +13,49 @@ import { listDatasetImportRatingChunkStats } from '../infrastructure/persistence
 import type { DatasetImportChunkMessage } from './ports/dataset-import-chunk-dispatcher.port.js';
 
 describe('fila de importacao do dataset', () => {
+  it('deve processar uma nova solicitação recebida enquanto a fila está ocupada', async () => {
+    const context = await createTestContext();
+    let releaseFirstExecution: (() => void) | undefined;
+    let firstExecutionStarted: (() => void) | undefined;
+    let executions = 0;
+    const firstExecution = new Promise<void>((resolve) => { releaseFirstExecution = resolve; });
+    const executionStarted = new Promise<void>((resolve) => { firstExecutionStarted = resolve; });
+    const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), undefined, {
+      autoProcess: false,
+      writeExecutor: {
+        async execute(operation) {
+          executions += 1;
+          if (executions === 1) {
+            firstExecutionStarted?.();
+            await firstExecution;
+          }
+          return await operation();
+        },
+      },
+    });
+
+    try {
+      const firstContent = 'movieId,imdbId,tmdbId\n1,0114709,10\n';
+      const secondContent = 'movieId,imdbId,tmdbId\n2,0114710,20\n';
+      const firstFile = await createCsv(context.directory, 'first-links.csv', firstContent);
+      const secondFile = await createCsv(context.directory, 'second-links.csv', secondContent);
+      const firstUpload = await queue.enqueue({ fileName: 'first-links.csv', sizeBytes: firstContent.length, storagePath: firstFile, type: 'links' });
+      const secondUpload = await queue.enqueue({ fileName: 'second-links.csv', sizeBytes: secondContent.length, storagePath: secondFile, type: 'links' });
+
+      const firstRun = queue.processPending();
+      await executionStarted;
+      const secondRun = queue.processPending();
+      releaseFirstExecution?.();
+      await Promise.all([firstRun, secondRun]);
+
+      assert.equal((await queue.findUpload(firstUpload.id))?.status, 'success', JSON.stringify(await queue.findUpload(firstUpload.id)));
+      assert.equal((await queue.findUpload(secondUpload.id))?.status, 'success', JSON.stringify(await queue.findUpload(secondUpload.id)));
+      assert.equal(executions, 2);
+    } finally {
+      await context.dispose();
+    }
+  });
+
   it('deve despachar os chunks de ratings sem processá-los no job-pai', async () => {
     const context = await createTestContext();
 
@@ -298,8 +341,8 @@ describe('fila de importacao do dataset', () => {
       const filePath = await createCsv(context.directory, 'links.csv', content);
       const upload = await createDatasetUploadWithJob(context.client, { fileName: 'links.csv', sizeBytes: content.length, storagePath: filePath, type: 'links' });
       await context.client.batch([
-        { sql: "UPDATE dataset_import_jobs SET status = 'processing' WHERE id = ?", args: [upload.jobId] },
-        { sql: "UPDATE dataset_uploads SET status = 'processing' WHERE id = ?", args: [upload.id] },
+         { sql: "UPDATE dataset_import_jobs SET status = 'processing', started_at = datetime('now', '-31 minutes') WHERE id = ?", args: [upload.jobId] },
+         { sql: "UPDATE dataset_uploads SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [upload.id] },
       ], 'write');
       const recoveredQueue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client));
 
