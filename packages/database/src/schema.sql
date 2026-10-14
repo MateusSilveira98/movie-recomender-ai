@@ -241,6 +241,7 @@ CREATE TABLE IF NOT EXISTS dataset_import_jobs (
   error_message TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   started_at TEXT,
+  heartbeat_at TEXT,
   completed_at TEXT,
   FOREIGN KEY (upload_id) REFERENCES dataset_uploads (id) ON DELETE CASCADE
 );
