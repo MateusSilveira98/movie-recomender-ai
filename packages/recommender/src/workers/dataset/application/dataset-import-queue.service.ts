@@ -3,6 +3,7 @@ import type {
   DatasetDiagnosticsPage,
   DatasetDiagnosticsPagination,
   DatasetImportJob,
+  DatasetImportResult,
   DatasetUpload,
   DatasetUploadInput,
 } from '../domain/dataset-import-queue.types.js';
@@ -148,7 +149,17 @@ export function createDatasetImportQueue(
       }
       stage = 'import_file';
       gateway.reportJobStage?.(job, stage, 'processing');
-      const result = await gateway.importFile(job, diagnostics);
+      await gateway.heartbeatJob(job, { stage, status: 'started' });
+      const heartbeat = setInterval(() => {
+        gateway.reportJobStage?.(job, stage, 'processing');
+        void gateway.heartbeatJob(job, { stage, status: 'processing' }).catch((error) => gateway.reportProcessorFailure(error));
+      }, 30_000);
+      let result: DatasetImportResult;
+      try {
+        result = await gateway.importFile(job, diagnostics);
+      } finally {
+        clearInterval(heartbeat);
+      }
       await diagnostics.flush();
       await gateway.completeJob(job, result);
       await gateway.deleteTemporaryFile(job.storagePath);
@@ -157,6 +168,7 @@ export function createDatasetImportQueue(
       await failWithDiagnostics(job, diagnostics, 'Falha ao processar o arquivo enviado.');
       if (job.storagePath) await gateway.deleteTemporaryFile(job.storagePath);
       gateway.reportJobFailure(job, error, stage);
+      throw error;
     }
   }
 
