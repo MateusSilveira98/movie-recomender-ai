@@ -37,6 +37,7 @@ export interface DatasetImportGateway {
   failJob(job: StoredDatasetImportJob, message: string, failures: DatasetFailure[]): Promise<void>;
   findUpload(uploadId: string): Promise<DatasetUpload | null>;
   getDependencyCounts(type: DatasetFileType): Promise<{ links: number; movies: number }>;
+  heartbeatJob(job: StoredDatasetImportJob, progress?: Record<string, unknown>): Promise<void>;
   importFile(job: StoredDatasetImportJob, diagnostics: DatasetImportDiagnosticsCollector): Promise<DatasetImportResult>;
   listDiagnostics(uploadId: string, pagination: DatasetDiagnosticsPagination): Promise<DatasetDiagnosticsPage | null>;
   listChunks(jobId: string): Promise<DatasetImportChunk[]>;

@@ -157,6 +157,7 @@ export function createDatasetImportQueue(
       await failWithDiagnostics(job, diagnostics, 'Falha ao processar o arquivo enviado.');
       if (job.storagePath) await gateway.deleteTemporaryFile(job.storagePath);
       gateway.reportJobFailure(job, error, stage);
+      throw error;
     }
   }
 

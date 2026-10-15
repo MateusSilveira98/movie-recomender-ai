@@ -121,6 +121,12 @@ export async function completeDatasetImportJob(client: Client, job: Pick<StoredD
   });
 }
 
+export async function heartbeatDatasetImportJob(client: Client, job: Pick<StoredDatasetImportJob, 'id' | 'uploadId'>, _progress: Record<string, unknown> = {}): Promise<void> {
+  await client.batch([
+    { sql: 'UPDATE dataset_import_jobs SET heartbeat_at = CURRENT_TIMESTAMP WHERE id = ? AND status = \'processing\'', args: [job.id] },
+    { sql: 'UPDATE dataset_uploads SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', args: [job.uploadId] },
+  ], 'write');
+}
 export async function startDatasetImportJob(client: Client, job: Pick<StoredDatasetImportJob, 'id' | 'uploadId'>): Promise<void> {
   await client.batch([
     { sql: "UPDATE dataset_import_jobs SET status = 'processing', started_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'queued'", args: [job.id] },
@@ -245,7 +251,7 @@ export async function requeueInterruptedDatasetImportJobs(client: Client): Promi
       sql: `UPDATE dataset_import_jobs
         SET status = 'queued', error_message = NULL
         WHERE status = 'processing'
-          AND started_at < datetime('now', ? || ' minutes')`,
+          AND COALESCE(heartbeat_at, started_at) < datetime('now', ? || ' minutes')`,
       args: [`-${INTERRUPTED_JOB_TIMEOUT_MINUTES}`],
     },
     {
