@@ -1,6 +1,8 @@
 import { createClient, type Client } from '@libsql/client';
 import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
+export { applyDatabaseSchema } from './apply-schema.js';
+
 export interface DatabaseHealth {
   provider: 'local-libsql' | 'remote-turso';
   status: 'ready' | 'degraded';

@@ -4,7 +4,7 @@ import type { Client } from '@libsql/client';
 import { createDatabaseClient, getDatabaseHealth } from '@pkg/database';
 import { logger } from '@pkg/logger';
 import { getTrainingPipelineStatus, type ModelRuntimeStatus } from '@pkg/ml';
-import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, getQstashConfiguration, type DatasetImportCommand, type QstashConfiguration, type RecommendationRanker } from '@pkg/recommender';
+import { createDatasetImportQueue, createRecommendationRanker, createSqlDatasetImportGateway, datasetImportUploadObjectKey, getQstashConfiguration, resolveDatasetImportStoragePrefix, sanitizeDatasetImportFileName, type DatasetImportCommand, type QstashConfiguration, type RecommendationRanker } from '@pkg/recommender';
 import { getHealthMessage } from '@pkg/shared/data-access/services/api-services/health';
 import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 import { createQstashDatasetImportRoutes } from '../domains/dataset-imports/routes/qstash-dataset-imports.routes.js';
@@ -30,10 +30,10 @@ interface AppDependencies {
 
 function createRehydrateFile(storageFactory: () => { download(command: DatasetImportCommand, destination: string): Promise<void> }) {
   return async (job: StoredDatasetImportJob): Promise<string> => {
-    if (!job.objectKey) throw new Error('O objectKey do upload não está persistido.');
+    const objectKey = job.objectKey ?? datasetImportUploadObjectKey(resolveDatasetImportStoragePrefix(), job.uploadId, sanitizeDatasetImportFileName(job.fileName));
     const path = `/tmp/movie-recommender-qstash-imports/${job.uploadId}/source.csv`;
     await (await import('node:fs/promises')).mkdir(path.slice(0, path.lastIndexOf('/')), { recursive: true });
-    await storageFactory().download({ fileName: job.fileName, objectKey: job.objectKey, sizeBytes: job.sizeBytes, type: job.type, uploadId: job.uploadId }, path);
+    await storageFactory().download({ fileName: job.fileName, objectKey, sizeBytes: job.sizeBytes, type: job.type, uploadId: job.uploadId }, path);
     return path;
   };
 }

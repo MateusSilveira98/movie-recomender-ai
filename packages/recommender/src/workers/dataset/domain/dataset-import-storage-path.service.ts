@@ -18,7 +18,11 @@ export function normalizeDatasetImportStoragePrefix(prefix: string): string {
 }
 
 export function datasetImportUploadObjectKey(prefix: string, uploadId: string, fileName: string): string {
-  return `${prefix}/${uploadId}/${fileName}`;
+  return `${prefix}/${uploadId}/${sanitizeDatasetImportFileName(fileName)}`;
+}
+
+export function sanitizeDatasetImportFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 export function datasetImportStatusObjectKey(prefix: string, uploadId: string): string {
