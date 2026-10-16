@@ -114,14 +114,7 @@ export async function inspectUtf8Encoding(filePath: string): Promise<Utf8Validat
       chunks += 1;
 
       if (firstInvalidByteOffset === null) {
-        for (let index = 0; index < buffer.length; index += 1) {
-          try {
-            decoder.decode(buffer.subarray(index, index + 1), { stream: true });
-          } catch {
-            firstInvalidByteOffset = bytes + index;
-            break;
-          }
-        }
+        firstInvalidByteOffset = findFirstInvalidUtf8Byte(decoder, buffer, bytes);
       }
 
       bytes += buffer.byteLength;
@@ -144,6 +137,23 @@ export async function inspectUtf8Encoding(filePath: string): Promise<Utf8Validat
     };
   } finally {
     input.destroy();
+  }
+}
+
+function findFirstInvalidUtf8Byte(decoder: TextDecoder, buffer: Buffer, chunkOffset: number): number | null {
+  try {
+    decoder.decode(buffer, { stream: true });
+    return null;
+  } catch {
+    for (let index = 0; index < buffer.length; index += 1) {
+      try {
+        decoder.decode(buffer.subarray(index, index + 1), { stream: true });
+      } catch {
+        return chunkOffset + index;
+      }
+    }
+
+    return chunkOffset;
   }
 }
 
