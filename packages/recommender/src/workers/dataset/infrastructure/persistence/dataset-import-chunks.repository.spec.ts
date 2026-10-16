@@ -147,7 +147,7 @@ describe('chunks de importação do dataset', () => {
         contentHash: 'hash-0', lineEnd: 2, lineStart: 2, payloadPath: '/tmp/chunk-0.jsonl', recordCount: 1, sequence: 0,
       });
       await context.client.batch([
-        { sql: "UPDATE dataset_import_jobs SET status = 'processing', started_at = datetime('now', '-31 minutes') WHERE id = ?", args: [upload.jobId] },
+        { sql: "UPDATE dataset_import_jobs SET status = 'processing', created_at = datetime('now', '-31 minutes'), started_at = datetime('now', '-31 minutes') WHERE id = ?", args: [upload.jobId] },
         { sql: "UPDATE dataset_import_chunks SET status = 'processing' WHERE id = ?", args: [chunk.id] },
       ], 'write');
 
@@ -181,6 +181,24 @@ describe('chunks de importação do dataset', () => {
         ['movie_id', '1', '1'],
         ['movie_lens_id', '1', '1'],
       ]);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  it('não recupera um job ativo que enviou heartbeat recentemente', async () => {
+    const context = await createTestContext();
+
+    try {
+      const upload = await createDatasetUploadWithJob(context.client, { fileName: 'links.csv', sizeBytes: 100, storagePath: '/tmp/links.csv', type: 'links' });
+      await context.client.batch([
+        { sql: "UPDATE dataset_import_jobs SET status = 'processing', created_at = datetime('now', '-31 minutes'), started_at = datetime('now', '-31 minutes'), heartbeat_at = CURRENT_TIMESTAMP WHERE id = ?", args: [upload.jobId] },
+      ], 'write');
+
+      await requeueInterruptedDatasetImportJobs(context.client);
+
+      const job = await context.client.execute({ sql: 'SELECT status FROM dataset_import_jobs WHERE id = ?', args: [upload.jobId] });
+      assert.equal(job.rows[0]?.status, 'processing');
     } finally {
       await context.dispose();
     }

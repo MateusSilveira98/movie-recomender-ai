@@ -63,7 +63,8 @@ export async function claimNextDatasetImportJob(client: Client): Promise<StoredD
 
   const claim = await client.execute({
     sql: `UPDATE OR IGNORE dataset_import_jobs
-      SET status = 'processing', attempt_count = attempt_count + 1, started_at = CURRENT_TIMESTAMP, error_message = NULL
+      SET status = 'processing', attempt_count = attempt_count + 1, started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
+        heartbeat_at = CURRENT_TIMESTAMP, error_message = NULL
       WHERE id = ? AND status = 'queued'`,
     args: [jobId],
   });
@@ -251,7 +252,7 @@ export async function requeueInterruptedDatasetImportJobs(client: Client): Promi
       sql: `UPDATE dataset_import_jobs
         SET status = 'queued', error_message = NULL
         WHERE status = 'processing'
-          AND COALESCE(heartbeat_at, started_at) < datetime('now', ? || ' minutes')`,
+          AND COALESCE(heartbeat_at, created_at) < datetime('now', ? || ' minutes')`,
       args: [`-${INTERRUPTED_JOB_TIMEOUT_MINUTES}`],
     },
     {

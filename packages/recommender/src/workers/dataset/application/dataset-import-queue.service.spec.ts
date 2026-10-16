@@ -341,7 +341,7 @@ describe('fila de importacao do dataset', () => {
       const filePath = await createCsv(context.directory, 'links.csv', content);
       const upload = await createDatasetUploadWithJob(context.client, { fileName: 'links.csv', sizeBytes: content.length, storagePath: filePath, type: 'links' });
       await context.client.batch([
-         { sql: "UPDATE dataset_import_jobs SET status = 'processing', started_at = datetime('now', '-31 minutes') WHERE id = ?", args: [upload.jobId] },
+         { sql: "UPDATE dataset_import_jobs SET status = 'processing', created_at = datetime('now', '-31 minutes'), started_at = datetime('now', '-31 minutes') WHERE id = ?", args: [upload.jobId] },
          { sql: "UPDATE dataset_uploads SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [upload.id] },
       ], 'write');
       const recoveredQueue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client));
