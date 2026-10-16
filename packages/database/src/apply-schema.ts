@@ -3,29 +3,20 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Client } from '@libsql/client';
 import { logger } from '@pkg/logger';
-import { createDatabaseClient, resolveDatabaseUrl } from './index.js';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const schemaPath = resolve(moduleDir, 'schema.sql');
-const databaseUrl = resolveDatabaseUrl();
 
-async function main() {
+export async function applyDatabaseSchema(client: Client): Promise<void> {
   const schema = await readFile(schemaPath, 'utf8');
-  const client = createDatabaseClient(databaseUrl);
-
-  try {
-    await client.executeMultiple(schema);
-    await migrateDatasetImportChunksSchema(client);
-    await migrateDatasetImportJobsSchema(client);
-    await migrateDatasetImportUploadsSchema(client);
-    await migrateDatasetImportRatingKeysSchema(client);
-    await migrateSessionMovieFeedbackSchema(client);
-    await migrateAnonymousSessionSchema(client);
-    await migrateModelVersionsSchema(client);
-    logger.info({ component: 'database', event: 'schema_applied' });
-  } finally {
-    await client.close();
-  }
+  await client.executeMultiple(schema);
+  await migrateDatasetImportChunksSchema(client);
+  await migrateDatasetImportJobsSchema(client);
+  await migrateDatasetImportUploadsSchema(client);
+  await migrateDatasetImportRatingKeysSchema(client);
+  await migrateSessionMovieFeedbackSchema(client);
+  await migrateAnonymousSessionSchema(client);
+  await migrateModelVersionsSchema(client);
 }
 
 async function migrateDatasetImportJobsSchema(client: Client): Promise<void> {
@@ -34,6 +25,7 @@ async function migrateDatasetImportJobsSchema(client: Client): Promise<void> {
     await client.execute({ sql: 'ALTER TABLE dataset_import_jobs ADD COLUMN heartbeat_at TEXT', args: [] });
   }
 }
+
 async function migrateDatasetImportUploadsSchema(client: Client): Promise<void> {
   const columns = await client.execute({ sql: 'PRAGMA table_info(dataset_uploads)', args: [] });
   if (!columns.rows.some((column) => String(column.name) === 'storage_object_key')) {
@@ -149,8 +141,3 @@ async function migrateSessionMovieFeedbackSchema(client: Client): Promise<void> 
 
   logger.info({ component: 'database', event: 'session_feedback_schema_migrated' });
 }
-
-main().catch((error: unknown) => {
-  logger.error({ component: 'database', error: error instanceof Error ? error.name : 'UnknownError', event: 'schema_failed' });
-  process.exitCode = 1;
-});
