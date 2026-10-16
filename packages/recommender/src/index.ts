@@ -21,6 +21,7 @@ export {
   datasetImportStatusObjectKey,
   datasetImportUploadObjectKey,
   resolveDatasetImportStoragePrefix,
+  sanitizeDatasetImportFileName,
 } from './workers/dataset/domain/dataset-import-storage-path.service.js';
 export {
   DATASET_FILE_TYPES,

@@ -28,7 +28,7 @@ export interface DatasetImportSubmission {
 export async function submitDatasetImport(input: DatasetImportSubmissionInput): Promise<DatasetImportSubmission> {
   const id = crypto.randomUUID();
   const storage = createStorage();
-  const objectKey = datasetImportUploadObjectKey(storage.prefix, id, sanitizeFileName(input.fileName));
+  const objectKey = datasetImportUploadObjectKey(storage.prefix, id, input.fileName);
 
   try {
     await storage.client.send(new PutObjectCommand({
@@ -88,8 +88,4 @@ function requiredEnvironment(name: string): string {
     : process.env[name]?.trim();
   if (!value) throw new Error(`${name} precisa ser configurada para importar datasets.`);
   return value;
-}
-
-function sanitizeFileName(fileName: string): string {
-  return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
 }

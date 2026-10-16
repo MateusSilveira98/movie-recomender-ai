@@ -5,6 +5,7 @@ import {
   datasetImportStatusObjectKey,
   datasetImportUploadObjectKey,
   resolveDatasetImportStoragePrefix,
+  sanitizeDatasetImportFileName,
 } from './dataset-import-storage-path.service.js';
 
 describe('dataset import storage prefix', () => {
@@ -41,6 +42,30 @@ describe('dataset import storage prefix', () => {
         datasetImportNormalizedChunkObjectKey(prefix, 'upload-1', 3),
         'dataset-imports/normalized/upload-1/chunk-3.jsonl',
       );
+    });
+  });
+
+  describe('upload object key reconstruction', () => {
+    it('rebuilds the same key used at upload for a plain file name', () => {
+      const prefix = 'dataset-imports';
+      const uploaded = datasetImportUploadObjectKey(prefix, 'upload-1', sanitizeDatasetImportFileName('credits.csv'));
+      const rebuilt = datasetImportUploadObjectKey(prefix, 'upload-1', sanitizeDatasetImportFileName('credits.csv'));
+
+      assert.equal(rebuilt, uploaded);
+      assert.equal(rebuilt, 'dataset-imports/upload-1/credits.csv');
+    });
+
+    it('sanitizes unsafe characters so the rebuilt key matches the stored object', () => {
+      assert.equal(
+        datasetImportUploadObjectKey('dataset-imports', 'upload-2', sanitizeDatasetImportFileName('dataset imports (ratings).csv')),
+        'dataset-imports/upload-2/dataset_imports__ratings_.csv',
+      );
+    });
+
+    it('does not double-sanitize a name that was already sanitized', () => {
+      const once = sanitizeDatasetImportFileName('a b.csv');
+
+      assert.equal(sanitizeDatasetImportFileName(once), once);
     });
   });
 });
