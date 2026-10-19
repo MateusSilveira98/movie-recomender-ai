@@ -71,6 +71,7 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
     clearDiagnostics: (uploadId) => clearDatasetImportDiagnostics(client, uploadId),
     clearRatingKeys: (uploadId) => clearDatasetImportRatingKeys(client, uploadId),
     completeJob: (job, result) => completeDatasetImportJob(client, job, result),
+    finalizeCompletedRatingJob: (job) => finalizeStagedRatingJob(client, { id: job.id, storagePath: job.storagePath, uploadId: job.uploadId }),
     createCheckpoints: (job) => createCheckpoints(job),
     createDiagnostics: (uploadId) => createDatasetImportDiagnosticsCollector(client, uploadId),
     createUpload: (upload) => createDatasetUploadWithJob(client, upload, upload.uploadId),

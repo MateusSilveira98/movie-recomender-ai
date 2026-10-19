@@ -125,6 +125,38 @@ describe('fila de importacao do dataset', () => {
     }
   });
 
+  it('finalizes ratings from completed chunks when the temporary file is gone', async () => {
+    const context = await createTestContext();
+
+    try {
+      await seedMovie(context.client, '10');
+      await context.client.execute({
+        sql: 'INSERT INTO dataset_movie_links (movie_lens_id, tmdb_id) VALUES (?, ?)',
+        args: [1, '10'],
+      });
+      const content = 'userId,movieId,rating,timestamp\n2,1,4,100\n';
+      const filePath = await createCsv(context.directory, 'ratings.csv', content);
+      const upload = await createDatasetUploadWithJob(context.client, {
+        fileName: 'ratings.csv', sizeBytes: content.length, storagePath: filePath, type: 'ratings',
+      });
+      const queue = createDatasetImportQueue(createSqlDatasetImportGateway(context.client), undefined, { autoProcess: false });
+
+      await queue.processPending();
+      await context.client.batch([
+        { sql: "UPDATE dataset_import_jobs SET status = 'queued' WHERE id = ?", args: [upload.jobId] },
+        { sql: 'DELETE FROM movie_ratings_stats', args: [] },
+      ], 'write');
+      await queue.processPending();
+
+      const recoveredUpload = await queue.findUpload(upload.id);
+      const stats = await context.client.execute({ sql: 'SELECT rating_count FROM movie_ratings_stats WHERE movie_id = ?', args: ['10'] });
+      assert.equal(recoveredUpload?.status, 'success', JSON.stringify(recoveredUpload));
+      assert.equal(stats.rows[0]?.rating_count, 1);
+    } finally {
+      await context.dispose();
+    }
+  });
+
   it('deve concluir links ao processar o chunk na fila específica', async () => {
     const context = await createTestContext();
 

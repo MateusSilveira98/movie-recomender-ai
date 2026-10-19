@@ -103,6 +103,10 @@ export function createDatasetImportQueue(
         }
         return;
       }
+      if (job.type === 'ratings' && existingChunks.length > 0 && existingChunks.every((chunk) => chunk.status === 'completed')) {
+        await gateway.finalizeCompletedRatingJob(job);
+        return;
+      }
       stage = 'validate_storage_path';
       gateway.reportJobStage?.(job, stage, 'processing');
       if (job.storagePath && rehydrateFile) {
