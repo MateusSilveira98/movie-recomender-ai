@@ -30,6 +30,7 @@ export interface DatasetImportGateway {
   clearDiagnostics(uploadId: string): Promise<void>;
   clearRatingKeys(uploadId: string): Promise<void>;
   completeJob(job: StoredDatasetImportJob, result: DatasetImportResult): Promise<void>;
+  finalizeCompletedRatingJob(job: StoredDatasetImportJob): Promise<void>;
   createCheckpoints(job: StoredDatasetImportJob): Promise<void>;
   createDiagnostics(uploadId: string): DatasetImportDiagnosticsCollector;
   createUpload(upload: DatasetUploadInput): Promise<DatasetUpload>;
