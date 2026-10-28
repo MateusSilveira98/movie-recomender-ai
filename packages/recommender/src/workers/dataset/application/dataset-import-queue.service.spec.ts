@@ -699,6 +699,208 @@ describe('fila de importacao do dataset', () => {
   });
 });
 
+describe('falhas do processamento de imports', () => {
+  it('nao duplica registros quando um chunk de ratings e reprocessado', async () => {
+    const context = await createTestContext();
+
+    try {
+      await seedMovie(context.client, '10');
+      await context.client.execute({
+        sql: 'INSERT INTO dataset_movie_links (movie_lens_id, tmdb_id) VALUES (?, ?)',
+        args: [1, '10'],
+      });
+      const content = 'userId,movieId,rating,timestamp\n2,1,4,100\n';
+      const filePath = await createCsv(context.directory, 'ratings.csv', content);
+      await createDatasetUploadWithJob(context.client, { fileName: 'ratings.csv', sizeBytes: content.length, storagePath: filePath, type: 'ratings' });
+      const messages: DatasetImportChunkMessage[] = [];
+      const gateway = createSqlDatasetImportGateway(context.client);
+      const queue = createDatasetImportQueue(gateway, { publish: async (message) => { messages.push(message); } });
+      await queue.processPending();
+
+      const handler = createSqlDatasetImportRatingChunkHandler(context.client);
+      await handler.process(messages[0]!);
+      const firstRun = await context.client.execute('SELECT COUNT(*) AS count FROM dataset_import_rating_records');
+      await context.client.execute({ sql: "UPDATE dataset_import_chunks SET status = 'queued' WHERE id = ?", args: [messages[0]!.chunkId] });
+      await handler.process(messages[0]!);
+
+      const secondRun = await context.client.execute('SELECT COUNT(*) AS count FROM dataset_import_rating_records');
+      assert.equal(firstRun.rows[0]?.count, 1);
+      assert.equal(secondRun.rows[0]?.count, 1);
+      await gateway.reconcileStagedImports();
+      const stats = await context.client.execute({ sql: 'SELECT rating_count FROM movie_ratings_stats WHERE movie_id = ?', args: ['10'] });
+      assert.equal(stats.rows[0]?.rating_count, 1);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  it('renova o heartbeat durante o processamento e para ao concluir', async () => {
+    const context = await createTestContext();
+
+    try {
+      const content = 'movieId,imdbId,tmdbId\n1,0114709,10\n';
+      const filePath = await createCsv(context.directory, 'links.csv', content);
+      await createDatasetUploadWithJob(context.client, { fileName: 'links.csv', sizeBytes: content.length, storagePath: filePath, type: 'links' });
+      const baseGateway = createSqlDatasetImportGateway(context.client);
+      let heartbeats = 0;
+      const gateway = {
+        ...baseGateway,
+        heartbeatJob: async (job: Parameters<typeof baseGateway.heartbeatJob>[0]) => {
+          heartbeats += 1;
+          return baseGateway.heartbeatJob(job);
+        },
+        importFile: async (job: Parameters<typeof baseGateway.importFile>[0], diagnostics: Parameters<typeof baseGateway.importFile>[1]) => {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          return baseGateway.importFile(job, diagnostics);
+        },
+      };
+      const queue = createDatasetImportQueue(gateway, undefined, { autoProcess: false, heartbeatIntervalMilliseconds: 10 });
+
+      await queue.processPending();
+      const heartbeatsAtCompletion = heartbeats;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      assert.ok(heartbeatsAtCompletion >= 2, `esperava ao menos 2 heartbeats durante o processamento, houve ${heartbeatsAtCompletion}`);
+      assert.equal(heartbeats, heartbeatsAtCompletion, 'o heartbeat não pode continuar após o término do job');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  it('registra o erro original de SQLITE_IOERR mesmo quando failJob também falha', async () => {
+    const errors: Array<{ operation?: string; error: unknown; event: string }> = [];
+    const gateway = createFailingGateway({
+      importError: new Error('SQLITE_IOERR: disk I/O error'),
+      failJobError: new Error('SQLITE_IOERR: falha secundaria no failJob'),
+    });
+    const queue = createDatasetImportQueue(gateway.gateway, undefined, { autoProcess: false });
+    gateway.onErrorEvent((event) => errors.push(event));
+
+    await queue.processPending();
+
+    const primary = errors.find((entry) => entry.event === 'job_failed');
+    assert.ok(primary, 'o erro original precisa ser registrado');
+    assert.equal(primary.error, 'Error');
+    assert.match(String(gateway.reportedMessages.find((entry) => entry.event === 'job_failed')?.errorMessage), /SQLITE_IOERR: disk I\/O error/);
+    assert.ok(errors.some((entry) => entry.event === 'secondary_operation_failed' && entry.operation === 'fail_job'));
+  });
+
+  it('registra o erro original quando diagnostics.flush falha durante o tratamento', async () => {
+    const gateway = createFailingGateway({
+      importError: new Error('SQLITE_IOERR: disk I/O error'),
+      flushError: new Error('SQLITE_IOERR: falha ao gravar diagnosticos'),
+    });
+    const queue = createDatasetImportQueue(gateway.gateway, undefined, { autoProcess: false });
+
+    await queue.processPending();
+
+    assert.equal(gateway.reportedMessages.find((entry) => entry.event === 'job_failed')?.errorMessage, 'SQLITE_IOERR: disk I/O error');
+    assert.ok(gateway.reportedMessages.some((entry) => entry.event === 'secondary_operation_failed' && entry.operation === 'record_processing_failure'));
+  });
+
+  it('nao bloqueia a fila de ratings quando credits falha', async () => {
+    const context = await createTestContext();
+
+    try {
+      await seedMovie(context.client, '10');
+      const ratingsContent = 'userId,movieId,rating,timestamp\n2,1,4,100\n';
+      const ratingsFile = await createCsv(context.directory, 'ratings.csv', ratingsContent);
+      const creditsFile = await createCsv(context.directory, 'credits.csv', 'id,cast,crew\n10,[],[]\n');
+      await createDatasetUploadWithJob(context.client, { fileName: 'credits.csv', sizeBytes: 1, storagePath: creditsFile, type: 'credits' });
+      await createDatasetUploadWithJob(context.client, { fileName: 'ratings.csv', sizeBytes: ratingsContent.length, storagePath: ratingsFile, type: 'ratings' });
+      const baseGateway = createSqlDatasetImportGateway(context.client);
+      const gateway = {
+        ...baseGateway,
+        importFile: async (job: Parameters<typeof baseGateway.importFile>[0], diagnostics: Parameters<typeof baseGateway.importFile>[1]) => {
+          if (job.type === 'credits') throw new Error('SQLITE_IOERR: disk I/O error');
+          return baseGateway.importFile(job, diagnostics);
+        },
+      };
+      const queue = createDatasetImportQueue(gateway, undefined, { autoProcess: false });
+
+      await queue.processPending();
+
+      const jobs = await queue.listJobs();
+      assert.equal(jobs.find((job) => job.type === 'credits')?.status, 'failed');
+      assert.equal(jobs.find((job) => job.type === 'ratings')?.status, 'completed');
+    } finally {
+      await context.dispose();
+    }
+  });
+});
+
+function createFailingGateway(options: { importError: Error; failJobError?: Error; flushError?: Error }) {
+  const errorEvents: Array<{ operation?: string; error: unknown; event: string }> = [];
+  const reportedMessages: Array<Record<string, unknown>> = [];
+  const listeners: Array<(event: { operation?: string; error: unknown; event: string }) => void> = [];
+  const base = {
+    claimNextJob: (() => {
+      let claimed = false;
+      return async () => {
+        if (claimed) return null;
+        claimed = true;
+        return { id: 'job-1', uploadId: 'upload-1', type: 'credits', fileName: 'credits.csv', objectKey: null, sizeBytes: 1, storagePath: '/tmp/credits.csv', status: 'processing', attemptCount: 1, errorMessage: null } as never;
+      };
+    })(),
+    clearDiagnostics: async () => undefined,
+    clearRatingKeys: async () => undefined,
+    completeJob: async () => undefined,
+    createCheckpoints: async () => undefined,
+    createDiagnostics: () => ({
+      failures: () => [],
+      flush: async () => {
+        if (options.flushError) throw options.flushError;
+      },
+      record: async () => {
+        if (options.flushError) throw options.flushError;
+      },
+    }),
+    createUpload: async () => { throw new Error('nao usado'); },
+    deleteTemporaryFile: async () => undefined,
+    failJob: async () => {
+      if (options.failJobError) throw options.failJobError;
+    },
+    findUpload: async () => null,
+    getDependencyCounts: async () => ({ links: 1, movies: 1 }),
+    heartbeatJob: async () => undefined,
+    importFile: async () => { throw options.importError; },
+    listChunks: async () => [],
+    listDiagnostics: async () => null,
+    listJobs: async () => [],
+    listUploads: async () => [],
+    reconcileStagedImports: async () => undefined,
+    requeueInterruptedJobs: async () => undefined,
+    requeueWaitingJobs: async () => undefined,
+    reportJobFailure: (_job: unknown, error: unknown) => {
+      const entry = { error: error instanceof Error ? error.name : 'UnknownError', errorMessage: error instanceof Error ? error.message : '', event: 'job_failed' };
+      reportedMessages.push(entry);
+      emit({ error: entry.error, event: 'job_failed' });
+    },
+    reportSecondaryFailure: (_job: unknown, operation: string, error: unknown) => {
+      const entry = { error: error instanceof Error ? error.message : 'erro', event: 'secondary_operation_failed', operation };
+      reportedMessages.push(entry);
+      emit({ error: entry.error, event: 'secondary_operation_failed', operation });
+    },
+    reportProcessorFailure: () => undefined,
+    validateFileStructure: async () => true,
+    waitForDependencies: async () => undefined,
+    finalizeCompletedRatingJob: async () => undefined,
+  };
+
+  function emit(event: { operation?: string; error: unknown; event: string }): void {
+    errorEvents.push(event);
+    listeners.forEach((listener) => listener(event));
+  }
+
+  return {
+    gateway: base as unknown as Parameters<typeof createDatasetImportQueue>[0],
+    onErrorEvent(listener: (event: { operation?: string; error: unknown; event: string }) => void) {
+      listeners.push(listener);
+    },
+    reportedMessages,
+  };
+}
+
 async function createTestContext() {
   const directory = await mkdtemp(join(tmpdir(), 'movie-recommender-dataset-'));
   const client = createClient({ url: `file:${join(directory, 'database.db')}` });
