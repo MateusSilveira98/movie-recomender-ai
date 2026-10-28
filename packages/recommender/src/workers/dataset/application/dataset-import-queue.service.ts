@@ -11,6 +11,8 @@ import type { DatasetImportGateway, StoredDatasetImportJob } from './ports/datas
 import type { DatasetImportChunkDispatcher } from './ports/dataset-import-chunk-dispatcher.port.js';
 import { immediateDatasetImportWriteExecutor, type DatasetImportWriteExecutor } from './dataset-import-write-executor.service.js';
 
+const HEARTBEAT_INTERVAL_MILLISECONDS = 60_000;
+
 export interface DatasetImportQueue {
   enqueue(upload: DatasetUploadInput): Promise<DatasetUpload>;
   findUpload(uploadId: string): Promise<DatasetUpload | null>;
@@ -22,6 +24,7 @@ export interface DatasetImportQueue {
 
 export interface DatasetImportQueueOptions {
   autoProcess?: boolean;
+  heartbeatIntervalMilliseconds?: number;
   rehydrateFile?: (job: StoredDatasetImportJob) => Promise<string>;
   writeExecutor?: DatasetImportWriteExecutor;
 }
@@ -29,7 +32,7 @@ export interface DatasetImportQueueOptions {
 export function createDatasetImportQueue(
   gateway: DatasetImportGateway,
   chunkDispatcher?: DatasetImportChunkDispatcher,
-  { autoProcess = true, rehydrateFile, writeExecutor = immediateDatasetImportWriteExecutor }: DatasetImportQueueOptions = {},
+  { autoProcess = true, heartbeatIntervalMilliseconds = HEARTBEAT_INTERVAL_MILLISECONDS, rehydrateFile, writeExecutor = immediateDatasetImportWriteExecutor }: DatasetImportQueueOptions = {},
 ): DatasetImportQueue {
   let isProcessing = false;
   let processRequested = false;
@@ -75,7 +78,7 @@ export function createDatasetImportQueue(
       gateway.reportReconciliation?.('reconciliation_reconciled_staged_imports');
       let job = await gateway.claimNextJob();
       while (job) {
-        await processJob(job);
+        await processJobSafely(job);
         job = await gateway.claimNextJob();
       }
       gateway.reportReconciliation?.('reconciliation_completed');
@@ -86,6 +89,25 @@ export function createDatasetImportQueue(
   }
 
   async function processJob(job: StoredDatasetImportJob): Promise<void> {
+    const stopHeartbeat = startHeartbeat(job);
+    try {
+      await runJob(job);
+    } finally {
+      stopHeartbeat();
+    }
+  }
+
+  function startHeartbeat(job: StoredDatasetImportJob): () => void {
+    const timer = setInterval(() => {
+      gateway.heartbeatJob(job).catch((error: unknown) => {
+        gateway.reportSecondaryFailure?.(job, 'heartbeat', error);
+      });
+    }, heartbeatIntervalMilliseconds);
+    timer.unref();
+    return () => clearInterval(timer);
+  }
+
+  async function runJob(job: StoredDatasetImportJob): Promise<void> {
     const diagnostics = gateway.createDiagnostics(job.uploadId);
     let stage = 'start';
     gateway.reportJobStage?.(job, stage, 'processing');
@@ -157,11 +179,30 @@ export function createDatasetImportQueue(
       await gateway.completeJob(job, result);
       await gateway.deleteTemporaryFile(job.storagePath);
     } catch (error) {
-      await diagnostics.record(processingFailedDiagnostic());
-      await failWithDiagnostics(job, diagnostics, 'Falha ao processar o arquivo enviado.');
-      if (job.storagePath) await gateway.deleteTemporaryFile(job.storagePath);
       gateway.reportJobFailure(job, error, stage);
+      await runSecondary('record_processing_failure', job, () => diagnostics.record(processingFailedDiagnostic()));
+      await runSecondary('fail_job', job, () => failWithDiagnostics(job, diagnostics, 'Falha ao processar o arquivo enviado.'));
+      if (job.storagePath) {
+        const storagePath = job.storagePath;
+        await runSecondary('delete_temporary_file', job, () => gateway.deleteTemporaryFile(storagePath));
+      }
       throw error;
+    }
+  }
+
+  async function processJobSafely(job: StoredDatasetImportJob): Promise<void> {
+    try {
+      await processJob(job);
+    } catch (error) {
+      gateway.reportProcessorFailure(error);
+    }
+  }
+
+  async function runSecondary(operation: string, job: StoredDatasetImportJob, action: () => Promise<void>): Promise<void> {
+    try {
+      await action();
+    } catch (error) {
+      gateway.reportSecondaryFailure?.(job, operation, error);
     }
   }
 

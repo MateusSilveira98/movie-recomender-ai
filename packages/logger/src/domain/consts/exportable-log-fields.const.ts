@@ -11,10 +11,15 @@ export const LOG_EXPORT_FIELDS = [
   'durationMs',
   'error',
   'errorCause',
+  'errorCode',
   'errorMessage',
   'errorStack',
+  'rawCode',
+  'attemptCount',
+  'timestamp',
   'stage',
   'type',
+  'fileType',
   'uploadId',
 ] as const;
 

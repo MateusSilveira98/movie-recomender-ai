@@ -93,7 +93,8 @@ export function createSqlDatasetImportGateway(client: Client): DatasetImportGate
     requeueWaitingJobs: (dependency) => requeueWaitingDatasetJobs(client, dependency),
     reportReconciliation: (event, details) => logger.info({ component: 'dataset-import-queue', event, ...details }),
     reportJobStage: (job, stage, status) => logger.info({ component: 'dataset-import-queue', event: 'job_stage', jobId: job.id, stage, status, type: job.type, uploadId: job.uploadId }),
-    reportJobFailure: (job, error, stage) => logger.error({ component: 'dataset-import-queue', error: getErrorName(error), errorCause: getErrorCause(error), errorMessage: getErrorMessage(error), errorStack: getErrorStack(error), event: 'job_failed', jobId: job.id, stage, type: job.type, uploadId: job.uploadId }),
+    reportJobFailure: (job, error, stage) => logger.error({ attemptCount: job.attemptCount, component: 'dataset-import-queue', error: getErrorName(error), errorCause: getErrorCause(error), errorCode: getErrorCode(error), errorMessage: getErrorMessage(error), errorStack: getErrorStack(error), event: 'job_failed', fileType: job.type, jobId: job.id, rawCode: getRawCode(error), stage, timestamp: new Date().toISOString(), type: job.type, uploadId: job.uploadId }),
+    reportSecondaryFailure: (job, operation, error) => logger.error({ component: 'dataset-import-queue', error: getErrorName(error), errorMessage: getErrorMessage(error), event: 'secondary_operation_failed', jobId: job.id, operation, type: job.type, uploadId: job.uploadId }),
 
     reportProcessorFailure: (error) => logger.error({ component: 'dataset-import-queue', error: getErrorMessage(error), event: 'processor_failed' }),
     validateFileStructure,
@@ -297,8 +298,7 @@ export function createSqlDatasetImportRatingChunkHandler(client: Client, payload
       await diagnostics.flush();
       await completeDatasetImportChunk(client, chunk.id, result);
     } catch (error) {
-      await diagnostics.flush();
-      await requeueDatasetImportChunk(client, chunk.id, 'Falha temporária ao processar o chunk de avaliações.');
+      await recordChunkFailure(client, error, { attemptCount: chunk.attemptCount, chunkId: chunk.id, jobId: job.id, requeueMessage: 'Falha temporária ao processar o chunk de avaliações.', type: 'ratings', uploadId: job.uploadId }, diagnostics);
       throw error;
     }
   }
@@ -344,8 +344,7 @@ export function createSqlDatasetImportLinkChunkHandler(client: Client, payloadRe
       await completeDatasetImportChunk(client, chunk.id, result);
       await finalizeLinkJob(job);
     } catch (error) {
-      await diagnostics.flush();
-      await requeueDatasetImportChunk(client, chunk.id, 'Falha temporária ao processar o chunk de vínculos.');
+      await recordChunkFailure(client, error, { attemptCount: chunk.attemptCount, chunkId: chunk.id, jobId: job.id, requeueMessage: 'Falha temporária ao processar o chunk de vínculos.', type: 'links', uploadId: job.uploadId }, diagnostics);
       throw error;
     }
   }
@@ -472,16 +471,7 @@ function createMovieOrCreditHandler(
       await diagnostics.flush();
       await finalize(job);
     } catch (error) {
-      await diagnostics.flush();
-      await requeueDatasetImportChunk(client, chunk.id, 'Falha temporária ao processar o chunk.');
-      logger.error({
-        component: 'dataset-import-chunk',
-        error: getErrorMessage(error),
-        event: 'chunk_processing_failed',
-        jobId: job.id,
-        chunkId: chunk.id,
-        type,
-      });
+      await recordChunkFailure(client, error, { attemptCount: chunk.attemptCount, chunkId: chunk.id, jobId: job.id, requeueMessage: 'Falha temporária ao processar o chunk.', type, uploadId: job.uploadId }, diagnostics);
       throw error;
     }
   }
@@ -771,6 +761,61 @@ async function removeTemporaryFile(filePath: string): Promise<void> {
 
 function getErrorName(error: unknown): string {
   return error instanceof Error ? error.name : 'UnknownError';
+}
+
+async function recordChunkFailure(
+  client: Client,
+  error: unknown,
+  context: { attemptCount: number; chunkId: string; jobId: string; requeueMessage: string; type: DatasetFileType; uploadId: string },
+  diagnostics: DatasetImportDiagnosticsCollector,
+): Promise<void> {
+  logger.error({
+    attemptCount: context.attemptCount,
+    component: 'dataset-import-chunk',
+    chunkId: context.chunkId,
+    error: getErrorName(error),
+    errorCause: getErrorCause(error),
+    errorCode: getErrorCode(error),
+    errorMessage: getErrorMessage(error),
+    errorStack: getErrorStack(error),
+    event: 'chunk_processing_failed',
+    fileType: context.type,
+    jobId: context.jobId,
+    rawCode: getRawCode(error),
+    timestamp: new Date().toISOString(),
+    type: context.type,
+    uploadId: context.uploadId,
+  });
+  await runChunkSecondary('flush_diagnostics', context, () => diagnostics.flush());
+  await runChunkSecondary('requeue_chunk', context, () => requeueDatasetImportChunk(client, context.chunkId, context.requeueMessage));
+}
+
+async function runChunkSecondary(operation: string, context: { chunkId: string; jobId: string; type: DatasetFileType; uploadId: string }, action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    logger.error({
+      chunkId: context.chunkId,
+      component: 'dataset-import-chunk',
+      error: getErrorName(error),
+      errorMessage: getErrorMessage(error),
+      event: 'secondary_operation_failed',
+      jobId: context.jobId,
+      operation,
+      type: context.type,
+      uploadId: context.uploadId,
+    });
+  }
+}
+
+function getErrorCode(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' ? code.slice(0, 100) : '';
+}
+
+function getRawCode(error: unknown): number | null {
+  const rawCode = (error as { rawCode?: unknown } | null)?.rawCode;
+  return typeof rawCode === 'number' ? rawCode : null;
 }
 
 function getErrorCause(error: unknown): string {
