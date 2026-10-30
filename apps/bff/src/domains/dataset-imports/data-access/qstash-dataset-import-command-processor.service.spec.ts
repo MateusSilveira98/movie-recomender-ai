@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -24,6 +24,7 @@ describe('QStash dataset import command processor', () => {
     } as unknown as DatasetImportQueue;
     const processor = createQstashDatasetImportCommandProcessor(queue, {
       download: async (_command, destination) => { await writeFile(destination, 'payload'); },
+      upload: async () => undefined,
     });
 
     try {
@@ -39,6 +40,38 @@ describe('QStash dataset import command processor', () => {
     }
   });
 
+  it('uploads a local file to R2 and enqueues without downloading', async () => {
+    const enqueued: unknown[] = [];
+    let processed = 0;
+    let downloaded = false;
+    let uploaded = false;
+    const queue = {
+      enqueue: async (upload: unknown) => { enqueued.push(upload); return {} as never; },
+      processPending: async () => { processed += 1; },
+    } as unknown as DatasetImportQueue;
+    const localFilePath = join(tmpdir(), 'movie-recommender-test-local', 'ratings.csv');
+    await mkdir(join(localFilePath, '..'), { recursive: true });
+    await writeFile(localFilePath, 'payload');
+    const processor = createQstashDatasetImportCommandProcessor(queue, {
+      download: async () => { downloaded = true; },
+      upload: async () => { uploaded = true; },
+    });
+
+    try {
+      await processor({ ...command, localFilePath });
+
+      assert.equal(uploaded, true, 'should upload local file to R2');
+      assert.equal(downloaded, false, 'should not download from R2 when local file exists');
+      assert.equal(processed, 1);
+      assert.equal(enqueued.length, 1);
+      const upload = enqueued[0] as { storagePath: string; uploadId: string };
+      assert.equal(upload.uploadId, command.uploadId);
+      assert.equal(upload.storagePath, localFilePath);
+    } finally {
+      await rm(join(tmpdir(), 'movie-recommender-test-local'), { force: true, recursive: true });
+    }
+  });
+
   it('rejects a downloaded object with a different size before queuing it', async () => {
     let enqueued = false;
     const queue = {
@@ -47,6 +80,7 @@ describe('QStash dataset import command processor', () => {
     } as unknown as DatasetImportQueue;
     const processor = createQstashDatasetImportCommandProcessor(queue, {
       download: async (_command, destination) => { await writeFile(destination, 'too small'); },
+      upload: async () => undefined,
     });
 
     try {
