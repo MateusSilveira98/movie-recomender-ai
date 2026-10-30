@@ -5,9 +5,12 @@ import {
   createDatasetImportCommandPublisher,
   createDatasetImportStatusStore,
   datasetImportUploadObjectKey,
+  getQstashConfiguration,
   resolveDatasetImportStoragePrefix,
   type DatasetFileType,
+  type DatasetImportCommand,
 } from '@pkg/recommender';
+import { logger } from '@pkg/logger';
 import { resolveSecretEnvironmentValue } from '@pkg/shared/data-access/services/config-services/secret-environment.service';
 
 export interface DatasetImportSubmissionInput {
@@ -29,6 +32,84 @@ export async function submitDatasetImport(input: DatasetImportSubmissionInput): 
   const id = crypto.randomUUID();
   const storage = createStorage();
   const objectKey = datasetImportUploadObjectKey(storage.prefix, id, input.fileName);
+  const qstash = getQstashConfiguration();
+
+  if (qstash) {
+    return submitAsync(input, id, objectKey, storage, qstash);
+  }
+
+  return submitSync(input, id, objectKey, storage);
+}
+
+async function submitAsync(
+  input: DatasetImportSubmissionInput,
+  id: string,
+  objectKey: string,
+  storage: ReturnType<typeof createStorage>,
+  _qstash: NonNullable<ReturnType<typeof getQstashConfiguration>>,
+): Promise<DatasetImportSubmission> {
+  logger.info({
+    component: 'dataset-import-submission',
+    event: 'upload_accepted',
+    fileName: input.fileName,
+    sizeBytes: input.sizeBytes,
+    type: input.type,
+    uploadId: id,
+  });
+
+  await storage.statusStore.put({
+    createdAt: new Date().toISOString(),
+    errorMessage: null,
+    fileName: input.fileName,
+    id,
+    normalizedChunks: null,
+    sizeBytes: input.sizeBytes,
+    stage: 'accepted',
+    type: input.type,
+    updatedAt: new Date().toISOString(),
+  });
+
+  const command: DatasetImportCommand = {
+    fileName: input.fileName,
+    localFilePath: input.filePath,
+    objectKey,
+    sizeBytes: input.sizeBytes,
+    type: input.type,
+    uploadId: id,
+  };
+
+  try {
+    await storage.publisher.publish(command);
+    logger.info({
+      component: 'dataset-import-submission',
+      event: 'command_published',
+      fileName: input.fileName,
+      type: input.type,
+      uploadId: id,
+    });
+  } catch (error) {
+    await storage.client.send(new DeleteObjectCommand({ Bucket: storage.bucket, Key: objectKey })).catch(() => undefined);
+    await unlink(input.filePath).catch(() => undefined);
+    throw error;
+  }
+
+  return { fileName: input.fileName, id, sizeBytes: input.sizeBytes, status: 'accepted', type: input.type };
+}
+
+async function submitSync(
+  input: DatasetImportSubmissionInput,
+  id: string,
+  objectKey: string,
+  storage: ReturnType<typeof createStorage>,
+): Promise<DatasetImportSubmission> {
+  logger.info({
+    component: 'dataset-import-submission',
+    event: 'upload_accepted',
+    fileName: input.fileName,
+    sizeBytes: input.sizeBytes,
+    type: input.type,
+    uploadId: id,
+  });
 
   try {
     await storage.client.send(new PutObjectCommand({
@@ -49,6 +130,13 @@ export async function submitDatasetImport(input: DatasetImportSubmissionInput): 
       updatedAt: new Date().toISOString(),
     });
     await storage.publisher.publish({ fileName: input.fileName, objectKey, sizeBytes: input.sizeBytes, type: input.type, uploadId: id });
+    logger.info({
+      component: 'dataset-import-submission',
+      event: 'command_published',
+      fileName: input.fileName,
+      type: input.type,
+      uploadId: id,
+    });
   } catch (error) {
     await storage.client.send(new DeleteObjectCommand({ Bucket: storage.bucket, Key: objectKey })).catch(() => undefined);
     throw error;
@@ -56,8 +144,7 @@ export async function submitDatasetImport(input: DatasetImportSubmissionInput): 
     await unlink(input.filePath).catch(() => undefined);
   }
 
-  const accepted = { fileName: input.fileName, id, sizeBytes: input.sizeBytes, status: 'accepted' as const, type: input.type };
-  return accepted;
+  return { fileName: input.fileName, id, sizeBytes: input.sizeBytes, status: 'accepted', type: input.type };
 }
 
 function createStorage() {

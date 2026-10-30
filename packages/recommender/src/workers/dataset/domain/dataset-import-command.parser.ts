@@ -4,12 +4,20 @@ import type { DatasetImportCommand, NormalizedDatasetImportCommand } from './dat
 export function parseDatasetImportCommand(value: unknown): DatasetImportCommand | null {
   if (typeof value !== 'object' || value === null) return null;
   const command = value as DatasetImportCommand;
-  return typeof command.uploadId === 'string' && command.uploadId.length > 0
-    && typeof command.objectKey === 'string' && command.objectKey.length > 0
-    && typeof command.fileName === 'string' && command.fileName.length > 0
-    && typeof command.sizeBytes === 'number' && Number.isSafeInteger(command.sizeBytes) && command.sizeBytes >= 0
-    && typeof command.type === 'string' && DATASET_FILE_TYPES.includes(command.type)
-    ? command
+  const localFilePath = typeof command.localFilePath === 'string' && command.localFilePath.length > 0 ? command.localFilePath : undefined;
+  const base: DatasetImportCommand = {
+    fileName: command.fileName,
+    objectKey: command.objectKey,
+    sizeBytes: command.sizeBytes,
+    type: command.type,
+    uploadId: command.uploadId,
+  };
+  return typeof base.uploadId === 'string' && base.uploadId.length > 0
+    && typeof base.objectKey === 'string' && base.objectKey.length > 0
+    && typeof base.fileName === 'string' && base.fileName.length > 0
+    && typeof base.sizeBytes === 'number' && Number.isSafeInteger(base.sizeBytes) && base.sizeBytes >= 0
+    && typeof base.type === 'string' && DATASET_FILE_TYPES.includes(base.type)
+    ? localFilePath ? { ...base, localFilePath } : base
     : null;
 }
 
