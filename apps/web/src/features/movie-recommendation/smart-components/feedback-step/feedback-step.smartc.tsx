@@ -10,16 +10,16 @@ export function FeedbackStep({ history, watchedMovies, onBack, onContinue, onOpi
       <CardContent>
         <Stack spacing={3}>
           <Box>
-            <Typography variant="h5">Dos assistidos, quais vc gostou?</Typography>
+            <Typography variant="h5">Dos filmes assistidos, quais você gostou?</Typography>
             <Typography color="text.secondary">
-              Marcar gostei e nao gostei ajuda a separar recomendacao parecida de recomendacao ruim.
+              Marcar os filmes de que você gostou ou não gostou ajuda a separar recomendações parecidas de recomendações ruins.
             </Typography>
           </Box>
 
           {watchedMovies.length === 0 ? (
             <Typography color="text.secondary">
-              Nenhum filme marcado como assistido. Pode seguir mesmo assim, mas a recomendacao vai depender so das
-              preferencias.
+              Nenhum filme marcado como assistido. Você pode seguir mesmo assim, mas a recomendação dependerá apenas das
+              preferências.
             </Typography>
           ) : (
             <Stack spacing={2}>
@@ -53,7 +53,7 @@ export function FeedbackStep({ history, watchedMovies, onBack, onContinue, onOpi
                         </ToggleButton>
                         <ToggleButton value="disliked">
                           <ThumbDownIcon fontSize="small" sx={{ mr: 1 }} />
-                          Nao gostei
+                          Não gostei
                         </ToggleButton>
                       </ToggleButtonGroup>
                     </Stack>
@@ -68,7 +68,7 @@ export function FeedbackStep({ history, watchedMovies, onBack, onContinue, onOpi
               Voltar
             </Button>
             <Button variant="contained" onClick={onContinue}>
-              Ver recomendacoes
+              Ver recomendações
             </Button>
           </Stack>
         </Stack>

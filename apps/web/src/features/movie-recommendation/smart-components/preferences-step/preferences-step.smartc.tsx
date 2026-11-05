@@ -30,9 +30,9 @@ export function PreferencesStep({
       <CardContent>
         <Stack spacing={3}>
           <Box>
-            <Typography variant="h5">Quais preferencias importam hoje?</Typography>
+            <Typography variant="h5">Quais preferências importam hoje?</Typography>
             <Typography color="text.secondary">
-              Escolha generos e duracao. Isso ja da sinal suficiente pra primeira versao.
+              Escolha gêneros e duração. Isso já fornece sinais suficientes para a primeira versão.
             </Typography>
           </Box>
 
@@ -43,7 +43,7 @@ export function PreferencesStep({
             {genreOptionsStatus === 'loading' && (
               <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
                 <CircularProgress size={20} />
-                <Typography color="text.secondary">Carregando generos da API...</Typography>
+                <Typography color="text.secondary">Carregando gêneros da API...</Typography>
               </Stack>
             )}
 
@@ -56,7 +56,7 @@ export function PreferencesStep({
                   </Button>
                 }
               >
-                Nao foi possivel carregar os generos da API.
+                Não foi possível carregar os gêneros da API.
               </Alert>
             )}
 

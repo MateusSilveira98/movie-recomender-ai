@@ -74,7 +74,7 @@ export function RecommendationFlowContainer() {
                 Movie Recommender AI
               </Typography>
               <Typography color="text.secondary">
-                Um fluxo rapido pra transformar preferencias e historico em recomendacoes.
+                Um fluxo rápido para transformar preferências e histórico em recomendações.
               </Typography>
             </Box>
           </Box>
