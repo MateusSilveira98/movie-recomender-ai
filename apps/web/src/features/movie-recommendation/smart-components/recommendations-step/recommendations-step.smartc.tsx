@@ -53,9 +53,9 @@ export function RecommendationsStep({
               sx={{ alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}
             >
               <Box>
-                <Typography variant="h5">Recomendacoes pra sua rodada</Typography>
+                <Typography variant="h5">Recomendações para sua rodada</Typography>
                 <Typography color="text.secondary">
-                  Na proxima visita, vc cai direto aqui. Use nova rodada pra trocar preferencias.
+                  Na próxima visita, você virá direto para cá. Use "Nova rodada" para trocar as preferências.
                 </Typography>
               </Box>
               <Button startIcon={<RestartAltIcon />} variant="outlined" onClick={onStartNewRound}>
@@ -69,17 +69,17 @@ export function RecommendationsStep({
               variant="scrollable"
               scrollButtons="auto"
             >
-              <Tab label="Recomendacoes" value="recommendations" />
+              <Tab label="Recomendações" value="recommendations" />
               <Tab label={`Gostei (${activeRound?.history.liked.length ?? 0})`} value="liked" />
-              <Tab label={`Nao gostei (${activeRound?.history.disliked.length ?? 0})`} value="disliked" />
-              <Tab label={`Historico (${rounds.length})`} value="rounds" />
+              <Tab label={`Não gostei (${activeRound?.history.disliked.length ?? 0})`} value="disliked" />
+              <Tab label={`Histórico (${rounds.length})`} value="rounds" />
             </Tabs>
           </Stack>
         </CardContent>
       </Card>
 
       {recommendationsStatus === 'error' && (
-        <Alert severity="error">{recommendationsError ?? 'Nao foi possivel falar com a API.'}</Alert>
+        <Alert severity="error">{recommendationsError ?? 'Não foi possível falar com a API.'}</Alert>
       )}
 
       {activeTab === 'recommendations' && (
@@ -105,7 +105,7 @@ function RoundFeedback({
 }) {
   const isLiked = opinion === 'liked';
   const movieIds = round?.history[opinion] ?? [];
-  const label = isLiked ? 'Filmes que vc marcou como gostei' : 'Filmes que vc marcou como nao gostei';
+  const label = isLiked ? 'Filmes que você marcou como gostei' : 'Filmes que você marcou como não gostei';
 
   return (
     <Card variant="outlined">
@@ -125,7 +125,7 @@ function RecommendationsList({
     return (
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
         <CircularProgress size={20} />
-        <Typography color="text.secondary">Buscando recomendacoes na API...</Typography>
+        <Typography color="text.secondary">Buscando recomendações na API...</Typography>
       </Stack>
     );
   }
@@ -135,7 +135,7 @@ function RecommendationsList({
       <Card variant="outlined">
         <CardContent>
           <Typography color="text.secondary">
-            Nenhuma recomendacao encontrada para essas preferencias. Tente ajustar generos ou clima.
+            Nenhuma recomendação encontrada para essas preferências. Tente ajustar gêneros ou duração.
           </Typography>
         </CardContent>
       </Card>
@@ -177,10 +177,10 @@ function RecommendationsList({
                   <ThumbUpIcon fontSize="small" sx={{ mr: 1 }} />
                   Gostei
                 </ToggleButton>
-                <ToggleButton value="disliked" aria-label={`Nao gostei de ${movie.title}`}>
-                  <ThumbDownIcon fontSize="small" sx={{ mr: 1 }} />
-                  Nao gostei
-                </ToggleButton>
+                  <ToggleButton value="disliked" aria-label={`Não gostei de ${movie.title}`}>
+                    <ThumbDownIcon fontSize="small" sx={{ mr: 1 }} />
+                    Não gostei
+                  </ToggleButton>
               </ToggleButtonGroup>
             </Stack>
           </CardContent>
@@ -229,7 +229,7 @@ function RecommendationRoundsHistory({ rounds }: Pick<RecommendationsStepProps, 
               </Stack>
 
               <Stack spacing={1}>
-                <Typography variant="subtitle2">Recomendacoes</Typography>
+                <Typography variant="subtitle2">Recomendações</Typography>
                 {round.recommendations.map((movie) => (
                   <Box key={movie.id}>
                     <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
@@ -249,7 +249,7 @@ function RecommendationRoundsHistory({ rounds }: Pick<RecommendationsStepProps, 
                 <Typography variant="subtitle2">Sinais usados</Typography>
                 <HistoryLine label="Visualizados" movieIds={round.history.watched} movieTitles={round.movieTitles} />
                 <HistoryLine label="Gostei" movieIds={round.history.liked} movieTitles={round.movieTitles} />
-                <HistoryLine label="Nao gostei" movieIds={round.history.disliked} movieTitles={round.movieTitles} />
+                <HistoryLine label="Não gostei" movieIds={round.history.disliked} movieTitles={round.movieTitles} />
               </Stack>
             </Stack>
           </CardContent>

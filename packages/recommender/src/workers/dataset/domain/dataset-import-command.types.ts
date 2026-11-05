@@ -3,7 +3,6 @@ import type { DatasetImportChunkInput } from './dataset-import-chunk.types.js';
 
 export interface DatasetImportCommand {
   fileName: string;
-  localFilePath?: string;
   objectKey: string;
   sizeBytes: number;
   type: DatasetFileType;

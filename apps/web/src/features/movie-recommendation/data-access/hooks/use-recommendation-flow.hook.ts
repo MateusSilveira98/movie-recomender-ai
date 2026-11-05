@@ -56,6 +56,10 @@ export function useRecommendationFlow() {
     () => movies.filter((movie) => history.watched.includes(movie.id)),
     [history.watched, movies],
   );
+  const availableMovies = useMemo(
+    () => movies.filter((movie) => !history.disliked.includes(movie.id)),
+    [history.disliked, movies],
+  );
 
   function loadGenreOptions() {
     setGenreOptionsStatus('loading');
@@ -113,7 +117,6 @@ export function useRecommendationFlow() {
 
   function startNewRound() {
     setPreferences(DEFAULT_PREFERENCES);
-    setHistory(DEFAULT_HISTORY);
     setRecommendations([]);
     setRecommendationsStatus('idle');
     setRecommendationsError(null);
@@ -163,7 +166,8 @@ export function useRecommendationFlow() {
 
   function applySession(session: Session, nextRecommendations: SessionRecommendation[]) {
     applyProfile(session);
-    setRecommendations(nextRecommendations);
+    const excludedMovieIds = new Set(session.history.disliked);
+    setRecommendations(nextRecommendations.filter((movie) => !excludedMovieIds.has(movie.id)));
     setRecommendationsStatus('success');
   }
 
@@ -236,7 +240,7 @@ export function useRecommendationFlow() {
     hasStoredSession,
     genreOptions,
     genreOptionsStatus,
-    movies,
+    movies: availableMovies,
     moviesStatus,
     watchedMovies,
     recommendations,

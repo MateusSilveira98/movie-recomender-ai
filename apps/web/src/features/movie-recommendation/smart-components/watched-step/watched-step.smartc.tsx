@@ -15,16 +15,16 @@ export function WatchedStep({
       <CardContent>
         <Stack spacing={3}>
           <Box>
-            <Typography variant="h5">Quais filmes vc ja assistiu?</Typography>
+            <Typography variant="h5">Quais filmes você já assistiu?</Typography>
             <Typography color="text.secondary">
-              Mostramos ate 10 filmes populares dentro das suas preferencias pra capturar sinal rapido.
+              Mostramos até 10 filmes populares dentro das suas preferências para capturar sinais rapidamente.
             </Typography>
           </Box>
 
           {moviesStatus === 'loading' && (
             <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
               <CircularProgress size={20} />
-              <Typography color="text.secondary">Carregando catalogo da API...</Typography>
+              <Typography color="text.secondary">Carregando catálogo da API...</Typography>
             </Stack>
           )}
 
@@ -37,12 +37,12 @@ export function WatchedStep({
                 </Button>
               }
             >
-              Nao foi possivel carregar o catalogo de filmes da API.
+              Não foi possível carregar o catálogo de filmes da API.
             </Alert>
           )}
 
           {moviesStatus === 'success' && movies.length === 0 && (
-            <Typography color="text.secondary">Nenhum filme disponivel no catalogo.</Typography>
+            <Typography color="text.secondary">Nenhum filme disponível no catálogo.</Typography>
           )}
 
           {moviesStatus === 'success' && movies.length > 0 && (

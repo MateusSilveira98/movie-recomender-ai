@@ -31,7 +31,7 @@ describe('recommendation journey', () => {
 
       render(<App />);
 
-      expect(await screen.findByText(/Nenhuma recomendacao encontrada/)).toBeTruthy();
+      expect(await screen.findByText(/Nenhuma recomendação encontrada/)).toBeTruthy();
     });
   });
 
@@ -45,9 +45,9 @@ describe('recommendation journey', () => {
       const user = userEvent.setup();
       render(<App />);
 
-      await user.click(screen.getByRole('button', { name: 'Avancar' }));
+      await user.click(screen.getByRole('button', { name: 'Avançar' }));
 
-      expect(await screen.findByText('Quais preferencias importam hoje?')).toBeTruthy();
+      expect(await screen.findByText('Quais preferências importam hoje?')).toBeTruthy();
     });
   });
 
@@ -66,9 +66,9 @@ describe('recommendation journey', () => {
 
       const user = userEvent.setup();
       render(<App />);
-      await user.click(screen.getByRole('button', { name: 'Avancar' }));
+      await user.click(screen.getByRole('button', { name: 'Avançar' }));
 
-      expect(await screen.findByText('Nao foi possivel carregar os generos da API.')).toBeTruthy();
+      expect(await screen.findByText('Não foi possível carregar os gêneros da API.')).toBeTruthy();
 
       await user.click(screen.getByRole('button', { name: 'Tentar de novo' }));
 
@@ -92,10 +92,10 @@ describe('recommendation journey', () => {
 
       const user = userEvent.setup();
       render(<App />);
-      await user.click(screen.getByRole('button', { name: 'Avancar' }));
+      await user.click(screen.getByRole('button', { name: 'Avançar' }));
       await user.click(await screen.findByRole('button', { name: 'Continuar' }));
 
-      expect(await screen.findByText('Nao foi possivel carregar o catalogo de filmes da API.')).toBeTruthy();
+      expect(await screen.findByText('Não foi possível carregar o catálogo de filmes da API.')).toBeTruthy();
 
       await user.click(screen.getByRole('button', { name: 'Tentar de novo' }));
 
@@ -113,7 +113,7 @@ describe('recommendation journey', () => {
 
       const user = userEvent.setup();
       render(<App />);
-      await user.click(screen.getByRole('button', { name: 'Avancar' }));
+      await user.click(screen.getByRole('button', { name: 'Avançar' }));
       await screen.findByRole('button', { name: 'Ficcao cientifica' });
       await user.click(screen.getByRole('button', { name: 'Continuar' }));
       await screen.findByRole('checkbox', { name: /Horizonte/ });
@@ -152,13 +152,13 @@ describe('recommendation journey', () => {
       const user = userEvent.setup();
       render(<App />);
 
-      await user.click(await screen.findByRole('button', { name: 'Avancar' }));
+      await user.click(await screen.findByRole('button', { name: 'Avançar' }));
       await screen.findByRole('button', { name: 'Ficcao cientifica' });
       await user.click(screen.getByRole('button', { name: 'Continuar' }));
       await user.click(await screen.findByRole('checkbox', { name: /Horizonte/ }));
       await user.click(screen.getByRole('button', { name: 'Continuar' }));
       await user.click(await screen.findByRole('button', { name: 'Gostei' }));
-      await user.click(screen.getByRole('button', { name: 'Ver recomendacoes' }));
+      await user.click(screen.getByRole('button', { name: 'Ver recomendações' }));
 
       expect(await screen.findByText('Horizonte (2024)')).toBeTruthy();
       expect(requestLog.map((request) => ({
@@ -211,16 +211,16 @@ describe('recommendation journey', () => {
       vi.stubGlobal('fetch', mockHttp({
         'GET /genres': () => jsonResponse({ genres: ['Ficcao cientifica'] }),
         'GET /sessions/current': () => jsonResponse(currentSessionResponse()),
-        'POST /sessions/feedback': () => jsonResponse({ error: 'Nao foi possivel salvar sua opiniao.' }, 500),
+        'POST /sessions/feedback': () => jsonResponse({ error: 'Não foi possível salvar sua opinião.' }, 500),
       }));
 
       const user = userEvent.setup();
       render(<App />);
       await screen.findByText('Horizonte (2024)');
 
-      await user.click(screen.getByRole('button', { name: 'Nao gostei de Horizonte' }));
+      await user.click(screen.getByRole('button', { name: 'Não gostei de Horizonte' }));
 
-      expect(await screen.findByText('Nao foi possivel salvar sua opiniao.')).toBeTruthy();
+      expect(await screen.findByText('Não foi possível salvar sua opinião.')).toBeTruthy();
     });
   });
 
@@ -234,13 +234,13 @@ describe('recommendation journey', () => {
       }));
 
       const user = userEvent.setup();
-      render(<App />);
-      await screen.findByText('Horizonte (2024)');
+       render(<App />);
+       await screen.findByText('Horizonte (2024)');
+       await user.click(screen.getByRole('tab', { name: 'Gostei (1)' }));
+       expect(await screen.findByText('Filmes que você marcou como gostei')).toBeTruthy();
+       expect(await screen.findByText('Horizonte')).toBeTruthy();
 
-      await user.click(screen.getByRole('tab', { name: 'Gostei (1)' }));
-      expect(await screen.findByText('Filmes que vc marcou como gostei')).toBeTruthy();
-
-      await user.click(screen.getByRole('tab', { name: 'Historico (1)' }));
+      await user.click(screen.getByRole('tab', { name: 'Histórico (1)' }));
       expect(await screen.findByText('Rodada 1')).toBeTruthy();
     });
 
@@ -256,7 +256,7 @@ describe('recommendation journey', () => {
 
       await user.click(screen.getByRole('button', { name: 'Nova rodada' }));
 
-      expect(await screen.findByText('Quais preferencias importam hoje?')).toBeTruthy();
+      expect(await screen.findByText('Quais preferências importam hoje?')).toBeTruthy();
     });
   });
 });
